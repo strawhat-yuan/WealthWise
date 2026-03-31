@@ -1,0 +1,7 @@
+D:\WealthWise-backend\src\main\java\com\yuan\wealthwisebackend\config\WebMvcConfigurer.java
+D:\WealthWise-backend\src\main\java\com\yuan\wealthwisebackend\control\StockController.java
+D:\WealthWise-backend\src\main\java\com\yuan\wealthwisebackend\model\dto\StockPriceData.java
+D:\WealthWise-backend\src\main\java\com\yuan\wealthwisebackend\model\entity\PriceData.java
+D:\WealthWise-backend\src\main\java\com\yuan\wealthwisebackend\model\entity\StockPriceResponse.java
+D:\WealthWise-backend\src\main\java\com\yuan\wealthwisebackend\service\StockDataService.java
+D:\WealthWise-backend\src\main\java\com\yuan\wealthwisebackend\WealthWiseBackendApplication.java

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yuan.wealthwisebackend.mapper.StockPriceMapper">
+
+    <resultMap id="BaseResultMap" type="com.yuan.wealthwisebackend.model.entity.StockPrice">
+            <id property="id" column="id" />
+            <result property="ticker" column="ticker" />
+            <result property="ts" column="ts" />
+            <result property="open" column="open" />
+            <result property="high" column="high" />
+            <result property="low" column="low" />
+            <result property="close" column="close" />
+            <result property="volume" column="volume" />
+            <result property="createdAt" column="created_at" />
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,ticker,ts,open,high,low,
+        close,volume,created_at
+    </sql>
+</mapper>

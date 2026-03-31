@@ -1,0 +1,35 @@
+-------------------------------------------------------------------------------
+Test set: com.yuan.wealthwisebackend.YahooFinanceTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 5.156 s <<< FAILURE! -- in com.yuan.wealthwisebackend.YahooFinanceTest
+com.yuan.wealthwisebackend.YahooFinanceTest.testGetStockInfo -- Time elapsed: 2.071 s <<< ERROR!
+java.io.IOException: Server returned HTTP response code: 429 for URL: https://query1.finance.yahoo.com/v7/finance/quote?symbols=TSLA
+	at java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)
+	at java.base/jdk.internal.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:45)
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:500)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:481)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection$10.run(HttpURLConnection.java:2094)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection$10.run(HttpURLConnection.java:2089)
+	at java.base/java.security.AccessController.doPrivileged(AccessController.java:569)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getChainedException(HttpURLConnection.java:2088)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream0(HttpURLConnection.java:1646)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream(HttpURLConnection.java:1626)
+	at java.base/sun.net.www.protocol.https.HttpsURLConnectionImpl.getInputStream(HttpsURLConnectionImpl.java:224)
+	at yahoofinance.quotes.query1v7.QuotesRequest.getResult(QuotesRequest.java:74)
+	at yahoofinance.YahooFinance.getQuotes(YahooFinance.java:381)
+	at yahoofinance.YahooFinance.get(YahooFinance.java:98)
+	at com.yuan.wealthwisebackend.YahooFinanceTest.testGetStockInfo(YahooFinanceTest.java:16)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1511)
+Caused by: java.io.IOException: Server returned HTTP response code: 429 for URL: https://query1.finance.yahoo.com/v7/finance/quote?symbols=TSLA
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream0(HttpURLConnection.java:2037)
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream(HttpURLConnection.java:1626)
+	at java.base/java.net.HttpURLConnection.getResponseCode(HttpURLConnection.java:529)
+	at java.base/sun.net.www.protocol.https.HttpsURLConnectionImpl.getResponseCode(HttpsURLConnectionImpl.java:308)
+	at yahoofinance.util.RedirectableRequest.openConnection(RedirectableRequest.java:54)
+	at yahoofinance.util.RedirectableRequest.openConnection(RedirectableRequest.java:34)
+	at yahoofinance.quotes.query1v7.QuotesRequest.getResult(QuotesRequest.java:72)
+	... 6 more
+
