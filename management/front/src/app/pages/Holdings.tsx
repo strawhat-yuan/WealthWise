@@ -269,7 +269,15 @@ export default function Holdings() {
 
   const handleTickerClick = async (ticker: string, showBuy: boolean = true) => {
     setSelectedChartTicker(ticker);
+    setSelectedTradeTicker(ticker);
     setIsBuyVisibleInModal(showBuy);
+    
+    // Initialize trade date and fetch price
+    const now = new Date();
+    const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    setTradeDate(localNow);
+    handleDateChange(ticker, localNow);
+
     setIsChartOpen(true);
     setIsChartLoading(true);
     try {
