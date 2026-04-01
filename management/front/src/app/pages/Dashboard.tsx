@@ -40,7 +40,7 @@ export default function Dashboard() {
 
   // Filter performance data based on time range
   const getFilteredPerformanceData = () => {
-    const now = new Date('2026-03-30'); // Using the current date from the context
+    const now = new Date(); // Using the actual current date
     let startDate = new Date(now);
 
     switch (timeRange) {

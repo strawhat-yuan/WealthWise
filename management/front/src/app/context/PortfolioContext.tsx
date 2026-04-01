@@ -1,24 +1,7 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { Holding, PerformanceData } from '../types/portfolio';
 
-// Mock performance data
-const generatePerformanceData = (): PerformanceData[] => {
-  const data: PerformanceData[] = [];
-  const startDate = new Date('2025-01-01');
-  const endDate = new Date('2025-12-31');
-  let currentValue = 35000;
-
-  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 7)) {
-    const change = (Math.random() - 0.45) * 1000;
-    currentValue += change;
-    data.push({
-      date: d.toISOString().split('T')[0],
-      value: Math.round(currentValue),
-    });
-  }
-
-  return data;
-};
+// Performance calculation helper will be logic-based from now on.
 
 interface PortfolioContextType {
   holdings: Holding[];
@@ -43,7 +26,7 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
     return (localStorage.getItem('wealthwise_role') as any) || 'user';
   });
   const [holdings, setHoldings] = useState<Holding[]>([]);
-  const [performanceData] = useState<PerformanceData[]>(generatePerformanceData());
+  const [performanceData, setPerformanceData] = useState<PerformanceData[]>([]);
   const [totalRealizedPnL, setTotalRealizedPnL] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +119,70 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       });
 
       setHoldings(mappedHoldings);
+
+      // --- NEW: Calculate Actual Portfolio Performance over time ---
+      // 1. Collect all unique tickers from trades
+      const uniqueTickers = Array.from(new Set(trades.map((t: any) => t.ticker))) as string[];
+      
+      // 2. Fetch all historical prices for involved tickers
+      const priceHistoryMap: Record<string, any[]> = {};
+      await Promise.all(uniqueTickers.map(async (t: string) => {
+          const res = await fetch(`/api/stockprice/ticker/${t}`);
+          if (res.ok) {
+              const hist = await res.json();
+              // Sort by date ascending
+              hist.sort((a: any, b: any) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+              priceHistoryMap[t] = hist;
+          }
+      }));
+
+      // 3. Define timeline (Weekly from first trade to now)
+      const performancePoints: PerformanceData[] = [];
+      if (trades.length > 0) {
+          const firstTradeTs = new Date(trades[0].ts);
+          const now = new Date();
+          
+          for (let d = new Date(firstTradeTs); d <= now; d.setDate(d.getDate() + 7)) {
+              let dailyValue = 0;
+              const dateStr = d.toISOString().split('T')[0];
+              
+              // Calculate holding quantities as of date 'd'
+              uniqueTickers.forEach(ticker => {
+                  let qtyAtTime = 0;
+                  trades.forEach((trade: any) => {
+                      if (trade.ticker === ticker && new Date(trade.ts) <= d) {
+                          qtyAtTime += trade.tradeType === 'BUY' ? trade.quantity : -trade.quantity;
+                      }
+                  });
+                  
+                  if (qtyAtTime > 0) {
+                      // Find price at or before date 'd'
+                      const history = priceHistoryMap[ticker] || [];
+                      let priceAtTime = 0;
+                      // Find the latest price in history that is <= date 'd'
+                      for (let i = history.length - 1; i >= 0; i--) {
+                          if (new Date(history[i].ts) <= d) {
+                              priceAtTime = history[i].close;
+                              break;
+                          }
+                      }
+                      // If no historical price found before this date, use the first available price
+                      if (priceAtTime === 0 && history.length > 0) {
+                          priceAtTime = history[0].close;
+                      }
+                      
+                      dailyValue += qtyAtTime * priceAtTime;
+                  }
+              });
+              
+              performancePoints.push({
+                  date: dateStr,
+                  value: Math.round(dailyValue)
+              });
+          }
+      }
+      
+      setPerformanceData(performancePoints);
     } catch (err: any) {
       setError(err.message || 'An error occurred fetching portfolio data');
     } finally {
