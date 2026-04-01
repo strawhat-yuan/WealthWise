@@ -24,6 +24,13 @@ public class StockHoldingController {
      */
     @PostMapping
     public boolean add(@RequestBody StockHolding stockHolding) {
+        QueryWrapper<StockHolding> wrapper = new QueryWrapper<>();
+        wrapper.eq("ticker", stockHolding.getTicker());
+        StockHolding existing = stockHoldingService.getOne(wrapper);
+        if (existing != null) {
+            existing.setQuantity(existing.getQuantity() + stockHolding.getQuantity());
+            return stockHoldingService.updateById(existing);
+        }
         return stockHoldingService.save(stockHolding);
     }
 

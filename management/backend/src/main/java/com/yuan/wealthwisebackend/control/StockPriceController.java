@@ -129,6 +129,14 @@ public class StockPriceController {
         return stockPriceService.removeByIds(ids);
     }
 
-
+    /**
+     * 获取所有可用的股票代码
+     */
+    @GetMapping("/tickers")
+    public List<String> getAvailableTickers() {
+        QueryWrapper<StockPrice> wrapper = new QueryWrapper<>();
+        wrapper.select("distinct ticker");
+        return stockPriceService.listObjs(wrapper, Object::toString);
+    }
 
 }

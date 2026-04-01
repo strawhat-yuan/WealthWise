@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePortfolio } from '../context/PortfolioContext';
-import { Holding } from '../types/portfolio';
 import {
   calculateHoldingValue,
   calculateHoldingCost,
@@ -13,19 +12,33 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
-import { Plus, Trash2, Edit, TrendingUp, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { AddEditHoldingDialog } from '../components/AddEditHoldingDialog';
+import { Plus, Trash2, TrendingUp, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { HoldingsSkeleton } from '../components/HoldingsSkeleton';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 type SortField = 'ticker' | 'name' | 'value' | 'gainLoss' | null;
 type SortDirection = 'asc' | 'desc';
 
 export default function Holdings() {
-  const { holdings, removeHolding, isLoading, error } = usePortfolio();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingHolding, setEditingHolding] = useState<Holding | null>(null);
+  const { holdings, removeHolding, addHolding, isLoading, error } = usePortfolio();
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [availableStocks, setAvailableStocks] = useState<string[]>([]);
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
+
+  // Chart state
+  const [selectedChartTicker, setSelectedChartTicker] = useState<string | null>(null);
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [isChartLoading, setIsChartLoading] = useState(false);
+  const [isChartOpen, setIsChartOpen] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/stockprice/tickers')
+      .then(res => res.json())
+      .then(data => setAvailableStocks(data))
+      .catch(err => console.error('Failed to fetch available stocks:', err));
+  }, []);
 
   // Show loading skeleton
   if (isLoading) {
@@ -53,35 +66,22 @@ export default function Holdings() {
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
-      // Toggle direction if same field
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
-      // Set new field with default desc
       setSortField(field);
       setSortDirection('desc');
     }
   };
 
-  // Sort holdings
   const sortedHoldings = [...holdings].sort((a, b) => {
     if (!sortField) return 0;
-
     let comparison = 0;
     switch (sortField) {
-      case 'ticker':
-        comparison = a.ticker.localeCompare(b.ticker);
-        break;
-      case 'name':
-        comparison = a.name.localeCompare(b.name);
-        break;
-      case 'value':
-        comparison = calculateHoldingValue(a) - calculateHoldingValue(b);
-        break;
-      case 'gainLoss':
-        comparison = calculateHoldingGainLoss(a) - calculateHoldingGainLoss(b);
-        break;
+      case 'ticker': comparison = a.ticker.localeCompare(b.ticker); break;
+      case 'name': comparison = a.name.localeCompare(b.name); break;
+      case 'value': comparison = calculateHoldingValue(a) - calculateHoldingValue(b); break;
+      case 'gainLoss': comparison = calculateHoldingGainLoss(a) - calculateHoldingGainLoss(b); break;
     }
-
     return sortDirection === 'asc' ? comparison : -comparison;
   });
 
@@ -96,33 +96,53 @@ export default function Holdings() {
     );
   };
 
-  const handleEdit = (holding: Holding) => {
-    setEditingHolding(holding);
-    setIsDialogOpen(true);
+  const handleAddStock = (ticker: string) => {
+    const qtyStr = quantities[ticker];
+    const qty = parseInt(qtyStr);
+    if (!qty || qty <= 0) {
+       alert("Please enter a valid quantity");
+       return;
+    }
+    addHolding({
+      ticker,
+      name: ticker + " Stock",
+      type: "stock",
+      quantity: qty,
+      currentPrice: 100, 
+      purchasePrice: 100,
+      purchaseDate: new Date().toISOString()
+    });
+    setQuantities(prev => ({ ...prev, [ticker]: '' }));
   };
 
-  const handleAdd = () => {
-    setEditingHolding(null);
-    setIsDialogOpen(true);
+  const handleQuantityChange = (ticker: string, value: string) => {
+    setQuantities(prev => ({ ...prev, [ticker]: value }));
   };
 
-  const handleCloseDialog = () => {
-    setIsDialogOpen(false);
-    setEditingHolding(null);
+  const handleTickerClick = async (ticker: string) => {
+    setSelectedChartTicker(ticker);
+    setIsChartOpen(true);
+    setIsChartLoading(true);
+    try {
+      const res = await fetch(`/api/stockprice/ticker/${ticker}`);
+      if (!res.ok) throw new Error("Failed to fetch data");
+      const data = await res.json();
+      setChartData(data);
+    } catch (err) {
+      console.error(err);
+      setChartData([]);
+    } finally {
+      setIsChartLoading(false);
+    }
   };
 
   const getAssetTypeBadgeColor = (type: string) => {
     switch (type) {
-      case 'stock':
-        return 'bg-blue-100 text-blue-800';
-      case 'bond':
-        return 'bg-green-100 text-green-800';
-      case 'cash':
-        return 'bg-gray-100 text-gray-800';
-      case 'etf':
-        return 'bg-purple-100 text-purple-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+      case 'stock': return 'bg-blue-100 text-blue-800';
+      case 'bond': return 'bg-green-100 text-green-800';
+      case 'cash': return 'bg-gray-100 text-gray-800';
+      case 'etf': return 'bg-purple-100 text-purple-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
@@ -133,10 +153,6 @@ export default function Holdings() {
           <h2 className="font-bold text-3xl">Holdings</h2>
           <p className="text-gray-600 mt-1">Manage your portfolio holdings</p>
         </div>
-        <Button onClick={handleAdd} className="flex items-center gap-2">
-          <Plus className="w-4 h-4" />
-          Add Holding
-        </Button>
       </div>
 
       <Card>
@@ -149,32 +165,20 @@ export default function Holdings() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="cursor-pointer group" onClick={() => handleSort('ticker')}>
-                    <div className="flex items-center">
-                      Ticker
-                      {getSortIcon('ticker')}
-                    </div>
+                    <div className="flex items-center">Ticker{getSortIcon('ticker')}</div>
                   </TableHead>
                   <TableHead className="cursor-pointer group" onClick={() => handleSort('name')}>
-                    <div className="flex items-center">
-                      Name
-                      {getSortIcon('name')}
-                    </div>
+                    <div className="flex items-center">Name{getSortIcon('name')}</div>
                   </TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Avg. Cost</TableHead>
                   <TableHead className="text-right">Current Price</TableHead>
                   <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('value')}>
-                    <div className="flex items-center justify-end">
-                      Total Value
-                      {getSortIcon('value')}
-                    </div>
+                    <div className="flex items-center justify-end">Total Value{getSortIcon('value')}</div>
                   </TableHead>
                   <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('gainLoss')}>
-                    <div className="flex items-center justify-end">
-                      Gain/Loss
-                      {getSortIcon('gainLoss')}
-                    </div>
+                    <div className="flex items-center justify-end">Gain/Loss{getSortIcon('gainLoss')}</div>
                   </TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -183,7 +187,7 @@ export default function Holdings() {
                 {sortedHoldings.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center py-8 text-gray-500">
-                      No holdings found. Click "Add Holding" to get started.
+                      No holdings found. Pick a stock from below to get started.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -198,9 +202,7 @@ export default function Holdings() {
                         <TableCell className="font-medium">{holding.ticker}</TableCell>
                         <TableCell>{holding.name}</TableCell>
                         <TableCell>
-                          <Badge className={getAssetTypeBadgeColor(holding.type)}>
-                            {holding.type}
-                          </Badge>
+                          <Badge className={getAssetTypeBadgeColor(holding.type)}>{holding.type}</Badge>
                         </TableCell>
                         <TableCell className="text-right">{holding.quantity.toLocaleString()}</TableCell>
                         <TableCell className="text-right">{formatCurrency(holding.purchasePrice)}</TableCell>
@@ -212,11 +214,7 @@ export default function Holdings() {
                           ) : (
                             <div className={gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}>
                               <div className="flex items-center justify-end gap-1">
-                                {gainLoss >= 0 ? (
-                                  <TrendingUp className="w-3 h-3" />
-                                ) : (
-                                  <TrendingDown className="w-3 h-3" />
-                                )}
+                                {gainLoss >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                                 <span className="font-medium">{formatCurrency(gainLoss)}</span>
                               </div>
                               <div className="text-xs">{formatPercent(gainLossPercent)}</div>
@@ -228,14 +226,7 @@ export default function Holdings() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleEdit(holding)}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeHolding(holding.id)}
+                              onClick={() => removeHolding(holding.id!)}
                               className="text-red-600 hover:text-red-700 hover:bg-red-50"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -252,11 +243,112 @@ export default function Holdings() {
         </CardContent>
       </Card>
 
-      <AddEditHoldingDialog
-        open={isDialogOpen}
-        onClose={handleCloseDialog}
-        holding={editingHolding}
-      />
+      {/* NEW: Stock List for adding holdings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Available Stocks Market</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Ticker</TableHead>
+                  <TableHead className="text-right">Quantity to Add</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {availableStocks.map((ticker) => (
+                  <TableRow key={ticker}>
+                    <TableCell className="font-medium">
+                      <button 
+                        onClick={() => handleTickerClick(ticker)}
+                        className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                      >
+                        {ticker}
+                      </button>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end">
+                        <input
+                          type="number"
+                          placeholder="e.g. 100"
+                          min="1"
+                          value={quantities[ticker] || ''}
+                          onChange={(e) => handleQuantityChange(ticker, e.target.value)}
+                          className="w-24 px-2 py-1 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        onClick={() => handleAddStock(ticker)}
+                        className="flex items-center gap-1 ml-auto"
+                      >
+                        <Plus className="w-4 h-4" /> Add
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {availableStocks.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center py-4 text-gray-500">
+                      No stocks available in the market database.
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Chart Dialog */}
+      <Dialog open={isChartOpen} onOpenChange={setIsChartOpen}>
+        <DialogContent className="sm:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle>{selectedChartTicker} - 1 Year Price History</DialogTitle>
+          </DialogHeader>
+          <div className="h-[400px] w-full mt-4">
+            {isChartLoading ? (
+              <div className="flex h-full items-center justify-center text-gray-500">
+                Loading chart data...
+              </div>
+            ) : chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="ts" 
+                    tickFormatter={(val) => {
+                      const date = new Date(val);
+                      return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear().toString().substr(-2)}`;
+                    }} 
+                    minTickGap={30}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis 
+                    domain={['auto', 'auto']}
+                    tickFormatter={(val) => `$${val}`}
+                    tick={{ fontSize: 12 }}
+                  />
+                  <Tooltip 
+                    labelFormatter={(val) => new Date(val).toLocaleDateString()}
+                    formatter={(val: number) => [`$${val.toFixed(2)}`, 'Close Price']}
+                  />
+                  <Line type="monotone" dataKey="close" stroke="#3b82f6" dot={false} strokeWidth={2} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center text-gray-500">
+                No history data available.
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

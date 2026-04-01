@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router';
 import { PortfolioProvider } from '../context/PortfolioContext';
-import { LayoutDashboard, Briefcase, TrendingUp } from 'lucide-react';
+import { LayoutDashboard, Briefcase, TrendingUp, History } from 'lucide-react';
 
 export default function Layout() {
   const location = useLocation();
@@ -40,6 +40,17 @@ export default function Layout() {
                 >
                   <Briefcase className="w-4 h-4" />
                   Holdings
+                </Link>
+                <Link
+                  to="/transactions"
+                  className={`px-4 py-2 rounded-md flex items-center gap-2 transition-colors ${
+                    isActive('/transactions')
+                      ? 'bg-blue-50 text-blue-600'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  <History className="w-4 h-4" />
+                  Transactions
                 </Link>
               </nav>
             </div>

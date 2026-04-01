@@ -80,17 +80,6 @@ export default function Dashboard() {
     ];
   };
 
-  // Prepare data for pie chart (by asset type)
-  const assetAllocation = holdings.reduce((acc, holding) => {
-    const value = holding.quantity * holding.currentPrice;
-    const existing = acc.find(item => item.name === holding.type);
-    if (existing) {
-      existing.value += value;
-    } else {
-      acc.push({ name: holding.type, value });
-    }
-    return acc;
-  }, [] as { name: string; value: number }[]);
 
   // Prepare data for pie chart (by holding)
   const topHoldingsData = holdings
@@ -233,75 +222,35 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Asset Allocation Chart */}
+        {/* Top Holdings Chart */}
         <Card>
           <CardHeader>
-            <CardTitle>Asset Allocation</CardTitle>
+            <CardTitle>Top 5 Holdings by Value</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={assetAllocation}
+                  data={holdingsChartData}
                   cx="50%"
-                  cy="45%"
+                  cy="50%"
                   labelLine={false}
-                  outerRadius={80}
+                  label={(entry) => `${entry.name}: ${formatCurrency(entry.value)}`}
+                  outerRadius={100}
                   fill="#8884d8"
                   dataKey="value"
                 >
-                  {assetAllocation.map((entry, index) => (
-                    <Cell key={`asset-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                  {holdingsChartData.map((entry, index) => (
+                    <Cell key={`holding-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip 
-                  formatter={(value: number) => [
-                    `${formatCurrency(value)} (${((value / stats.totalValue) * 100).toFixed(1)}%)`,
-                    'Value'
-                  ]} 
-                />
-                <Legend 
-                  verticalAlign="bottom"
-                  height={36}
-                  formatter={(value, entry: any) => {
-                    const percentage = ((entry.payload.value / stats.totalValue) * 100).toFixed(1);
-                    return `${value}: ${percentage}%`;
-                  }}
-                />
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Legend />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
-
-      {/* Top Holdings Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Top 5 Holdings by Value</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={holdingsChartData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={(entry) => `${entry.name}: ${formatCurrency(entry.value)}`}
-                outerRadius={100}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {holdingsChartData.map((entry, index) => (
-                  <Cell key={`holding-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value: number) => formatCurrency(value)} />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
     </div>
   );
 }

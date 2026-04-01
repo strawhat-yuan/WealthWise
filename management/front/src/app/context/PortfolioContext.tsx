@@ -101,6 +101,19 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
         body: JSON.stringify({ ticker: holding.ticker, quantity: holding.quantity })
       });
       if (res.ok) {
+        // Also record a BUY trade for this addition
+        await fetch('/api/stocktrade', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ticker: holding.ticker,
+            tradeType: 'BUY',
+            price: holding.currentPrice,
+            quantity: holding.quantity,
+            amount: holding.currentPrice * holding.quantity,
+            ts: new Date().toISOString()
+          })
+        });
         fetchData();
       }
     } catch (e) {

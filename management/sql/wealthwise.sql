@@ -19,6 +19,9 @@ CREATE TABLE `stock_holding`  (
 -- ----------------------------
 -- Records of stock_holding
 -- ----------------------------
+INSERT INTO `stock_holding` VALUES (1, 'NVDA', 100, '2026-04-01 12:00:00', '2026-04-01 12:00:00');
+INSERT INTO `stock_holding` VALUES (2, 'AAPL', 50, '2026-04-01 12:00:00', '2026-04-01 12:00:00');
+INSERT INTO `stock_holding` VALUES (3, 'TSLA', 200, '2026-04-01 12:00:00', '2026-04-01 12:00:00');
 
 -- ----------------------------
 -- Table structure for stock_price
