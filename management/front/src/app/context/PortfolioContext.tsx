@@ -189,41 +189,46 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
           }
       }));
 
-      // 3. Define timeline (Weekly from first trade to now)
+      // 3. Define timeline (Daily from first trade to now)
       const performancePoints: PerformanceData[] = [];
       if (trades.length > 0) {
           const firstTradeTs = new Date(trades[0].ts);
-          const now = new Date();
+          firstTradeTs.setHours(0, 0, 0, 0); // Start of first day
           
-          for (let d = new Date(firstTradeTs); d <= now; d.setDate(d.getDate() + 7)) {
-              let dailyValue = 0;
-              const dateStr = d.toISOString().split('T')[0];
+          const now = new Date();
+          const todayStr = now.toISOString().split('T')[0];
+          let lastDateStr = "";
+
+          // Loop through each day
+          for (let d = new Date(firstTradeTs); d <= now; d.setDate(d.getDate() + 1)) {
+              const checkPoint = new Date(d);
+              checkPoint.setHours(23, 59, 59, 999); // Look at data as of END of day
               
-              // Calculate holding quantities as of date 'd'
+              let dailyValue = 0;
+              const dateStr = checkPoint.toISOString().split('T')[0];
+              lastDateStr = dateStr;
+              
+              // Calculate holding quantities as of date 'checkPoint'
               uniqueTickers.forEach(ticker => {
                   let qtyAtTime = 0;
                   trades.forEach((trade: any) => {
-                      if (trade.ticker === ticker && new Date(trade.ts) <= d) {
+                      if (trade.ticker === ticker && new Date(trade.ts) <= checkPoint) {
                           qtyAtTime += trade.tradeType === 'BUY' ? trade.quantity : -trade.quantity;
                       }
                   });
                   
                   if (qtyAtTime > 0) {
-                      // Find price at or before date 'd'
                       const history = priceHistoryMap[ticker] || [];
                       let priceAtTime = 0;
-                      // Find the latest price in history that is <= date 'd'
                       for (let i = history.length - 1; i >= 0; i--) {
-                          if (new Date(history[i].ts) <= d) {
+                          if (new Date(history[i].ts) <= checkPoint) {
                               priceAtTime = history[i].close;
                               break;
                           }
                       }
-                      // If no historical price found before this date, use the first available price
                       if (priceAtTime === 0 && history.length > 0) {
                           priceAtTime = history[0].close;
                       }
-                      
                       dailyValue += qtyAtTime * priceAtTime;
                   }
               });
@@ -232,6 +237,18 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
                   date: dateStr,
                   value: Math.round(dailyValue)
               });
+          }
+
+          // 4. Force last point to match CURRENT total value if not already there
+          const currentTotalValue = mappedHoldings.reduce((sum, h) => sum + (h.quantity * h.currentPrice), 0);
+          if (lastDateStr !== todayStr) {
+              performancePoints.push({
+                  date: todayStr,
+                  value: Math.round(currentTotalValue)
+              });
+          } else if (performancePoints.length > 0) {
+              // Update the last point to be accurately current
+              performancePoints[performancePoints.length - 1].value = Math.round(currentTotalValue);
           }
       }
       

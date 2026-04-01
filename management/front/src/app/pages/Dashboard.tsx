@@ -13,6 +13,7 @@ export default function Dashboard() {
   const { holdings, performanceData, totalRealizedPnL, isLoading, error } = usePortfolio();
   const stats = calculatePortfolioStats(holdings);
   const [timeRange, setTimeRange] = useState<TimeRange>('3M');
+  const [allocationTab, setAllocationTab] = useState<'ticker' | 'sector'>('ticker');
 
   // Show loading skeleton
   if (isLoading) {
@@ -85,8 +86,9 @@ export default function Dashboard() {
   const topHoldingsData = holdings
     .map(holding => ({
       name: holding.ticker,
-      value: holding.quantity * holding.currentPrice,
+      value: (holding.quantity || 0) * (holding.currentPrice || 0),
     }))
+    .filter(d => !isNaN(d.value) && d.value > 0)
     .sort((a, b) => b.value - a.value);
 
   // Take top 5 and group the rest as "Other"
@@ -165,13 +167,37 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Holdings</CardTitle>
-            <Percent className="w-4 h-4 text-gray-500" />
+            <CardTitle className="text-sm font-medium text-gray-600">Daily P&L</CardTitle>
+            {(() => {
+              const totalDailyPnL = holdings.reduce((sum, h) => {
+                const value = h.quantity * h.currentPrice;
+                const chg = h.changePercent || 0;
+                const dailyPnL = value * (chg / (100 + chg));
+                return sum + dailyPnL;
+              }, 0);
+              return totalDailyPnL >= 0 ? (
+                <TrendingUp className="w-4 h-4 text-green-500" />
+              ) : (
+                <TrendingDown className="w-4 h-4 text-red-500" />
+              );
+            })()}
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl">{holdings.length}</div>
+            {(() => {
+              const totalDailyPnL = holdings.reduce((sum, h) => {
+                const value = h.quantity * h.currentPrice;
+                const chg = h.changePercent || 0;
+                const dailyPnL = value * (chg / (100 + chg));
+                return sum + dailyPnL;
+              }, 0);
+              return (
+                <div className={`font-bold text-2xl ${totalDailyPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(totalDailyPnL)}
+                </div>
+              );
+            })()}
             <p className="text-xs text-gray-500 mt-1">
-              {holdings.filter(h => h.type === 'stock').length} stocks
+              Active positions: {holdings.filter(h => h.quantity > 0).length}
             </p>
           </CardContent>
         </Card>
@@ -225,6 +251,7 @@ export default function Dashboard() {
                     return `${date.getMonth() + 1}/${date.getDate()}`;
                   }}
                   tick={{ fontSize: 12 }}
+                  minTickGap={40}
                 />
                 <YAxis
                   tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
@@ -241,16 +268,34 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Top Holdings Chart */}
+        {/* Allocation Chart (Combined Ticker & Sector) */}
         <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Asset Allocation (by Ticker)</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle>{allocationTab === 'ticker' ? 'Asset Allocation' : 'Sector Allocation'}</CardTitle>
+            <div className="flex gap-1">
+              <Button
+                variant={allocationTab === 'ticker' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setAllocationTab('ticker')}
+                className="h-7 px-2 text-xs"
+              >
+                Ticker
+              </Button>
+              <Button
+                variant={allocationTab === 'sector' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setAllocationTab('sector')}
+                className="h-7 px-2 text-xs"
+              >
+                Sector
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={holdingsChartData}
+                  data={allocationTab === 'ticker' ? holdingsChartData : sectorChartData}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
@@ -258,8 +303,11 @@ export default function Dashboard() {
                   paddingAngle={5}
                   dataKey="value"
                 >
-                  {holdingsChartData.map((entry, index) => (
-                    <Cell key={`holding-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                  {(allocationTab === 'ticker' ? holdingsChartData : sectorChartData).map((entry: any, index: number) => (
+                    <Cell 
+                      key={`allocation-${entry.name}-${index}`} 
+                      fill={allocationTab === 'sector' && SECTOR_COLORS[entry.name] ? SECTOR_COLORS[entry.name] : COLORS[index % COLORS.length]} 
+                    />
                   ))}
                 </Pie>
                 <Tooltip 
@@ -268,37 +316,6 @@ export default function Dashboard() {
                     return [`${formatCurrency(value)} (${percent}%)`, 'Value'];
                   }} 
                 />
-                <Legend layout="horizontal" verticalAlign="bottom" align="center" iconType="circle" />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Sector Allocation Chart */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Sector Allocation</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={sectorChartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {sectorChartData.map((entry, index) => (
-                    <Cell 
-                        key={`sector-${entry.name}-${index}`} 
-                        fill={SECTOR_COLORS[entry.name] || COLORS[index % COLORS.length]} 
-                    />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
                 <Legend layout="horizontal" verticalAlign="bottom" align="center" iconType="circle" />
               </PieChart>
             </ResponsiveContainer>
