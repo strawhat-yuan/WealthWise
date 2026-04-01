@@ -124,10 +124,34 @@ export default function Holdings() {
     setIsChartOpen(true);
     setIsChartLoading(true);
     try {
-      const res = await fetch(`/api/stockprice/ticker/${ticker}`);
-      if (!res.ok) throw new Error("Failed to fetch data");
-      const data = await res.json();
-      setChartData(data);
+      const [priceRes, tradeRes] = await Promise.all([
+        fetch(`/api/stockprice/ticker/${ticker}`),
+        fetch(`/api/stocktrade/ticker/${ticker}`)
+      ]);
+      if (!priceRes.ok || !tradeRes.ok) throw new Error("Failed to fetch data");
+      const prices = await priceRes.json();
+      const trades = await tradeRes.json();
+      
+      const pricesWithBuys = [...prices];
+      trades.forEach((trade: any) => {
+        if (trade.tradeType !== 'BUY') return;
+        const tradeTime = new Date(trade.ts).getTime();
+        
+        let closestP = pricesWithBuys[0];
+        let minDiff = Infinity;
+        pricesWithBuys.forEach(p => {
+          const diff = Math.abs(new Date(p.ts).getTime() - tradeTime);
+          if (diff < minDiff) { 
+            minDiff = diff; 
+            closestP = p; 
+          }
+        });
+        if (closestP) {
+          closestP.buyEventPrice = closestP.close;
+          closestP.tradeQuantity = (closestP.tradeQuantity || 0) + trade.quantity;
+        }
+      });
+      setChartData(pricesWithBuys);
     } catch (err) {
       console.error(err);
       setChartData([]);
@@ -144,6 +168,27 @@ export default function Holdings() {
       case 'etf': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
     }
+  };
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      // Find the main close price payload (it might be index 0 or 1 depending on hover overlap)
+      const p = payload[0].payload;
+      return (
+        <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+          <p className="font-semibold">{new Date(label).toLocaleDateString()}</p>
+          <p className="text-gray-700 mt-1">
+            Close Price: <span className="font-medium text-black">{formatCurrency(p.close)}</span>
+          </p>
+          {p.tradeQuantity && p.tradeQuantity > 0 ? (
+            <div className="mt-2 text-sm text-amber-600 font-bold bg-amber-50 px-2 py-1.5 rounded flex items-center gap-1">
+              🚀 Bought {p.tradeQuantity.toLocaleString()} shares
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
@@ -318,7 +363,7 @@ export default function Holdings() {
               </div>
             ) : chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
+                <LineChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis 
                     dataKey="ts" 
@@ -334,11 +379,15 @@ export default function Holdings() {
                     tickFormatter={(val) => `$${val}`}
                     tick={{ fontSize: 12 }}
                   />
-                  <Tooltip 
-                    labelFormatter={(val) => new Date(val).toLocaleDateString()}
-                    formatter={(val: number) => [`$${val.toFixed(2)}`, 'Close Price']}
-                  />
+                  <Tooltip content={<CustomTooltip />} />
                   <Line type="monotone" dataKey="close" stroke="#3b82f6" dot={false} strokeWidth={2} />
+                  <Line 
+                    type="monotone" 
+                    dataKey="buyEventPrice" 
+                    stroke="none" 
+                    dot={{ r: 6, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }} 
+                    isAnimationActive={false} 
+                  />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
