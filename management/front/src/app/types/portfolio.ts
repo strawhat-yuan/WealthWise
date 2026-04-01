@@ -8,6 +8,7 @@ export interface Holding {
   quantity: number;
   purchasePrice: number;
   currentPrice: number;
+  realizedPnL: number;
   purchaseDate: string;
 }
 

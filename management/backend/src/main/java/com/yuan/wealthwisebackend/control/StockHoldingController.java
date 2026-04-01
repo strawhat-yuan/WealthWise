@@ -28,10 +28,14 @@ public class StockHoldingController {
         wrapper.eq("ticker", stockHolding.getTicker());
         StockHolding existing = stockHoldingService.getOne(wrapper);
         if (existing != null) {
-            existing.setQuantity(existing.getQuantity() + stockHolding.getQuantity());
+            int newQuantity = Math.max(0, existing.getQuantity() + stockHolding.getQuantity());
+            existing.setQuantity(newQuantity);
             return stockHoldingService.updateById(existing);
         }
-        return stockHoldingService.save(stockHolding);
+        if (stockHolding.getQuantity() != null) {
+            return stockHoldingService.save(stockHolding);
+        }
+        return false;
     }
 
     /**

@@ -23,6 +23,7 @@ const generatePerformanceData = (): PerformanceData[] => {
 interface PortfolioContextType {
   holdings: Holding[];
   performanceData: PerformanceData[];
+  totalRealizedPnL: number;
   addHolding: (holding: Omit<Holding, 'id'>) => void;
   updateHolding: (id: string, holding: Omit<Holding, 'id'>) => void;
   removeHolding: (id: string) => void;
@@ -36,6 +37,7 @@ const PortfolioContext = createContext<PortfolioContextType | undefined>(undefin
 export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [performanceData] = useState<PerformanceData[]>(generatePerformanceData());
+  const [totalRealizedPnL, setTotalRealizedPnL] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,22 +51,63 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       if (!holdingRes.ok) throw new Error('Failed to fetch holdings from backend');
       const dbHoldings = await holdingRes.json();
 
-      // Fetch latest prices (we pick 2025-10-30 as the "latest" known valid date per SQL dump)
-      const priceRes = await fetch('/api/stockprice/date/2025-10-30');
+      // Fetch trades to compute cost basis and Realized P&L
+      const tradeRes = await fetch('/api/stocktrade/list');
+      if (!tradeRes.ok) throw new Error('Failed to fetch trades from backend');
+      const trades = await tradeRes.json();
+
+      // Compute Realized P&L and Moving Avg Cost
+      // Sort trades historically
+      trades.sort((a: any, b: any) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+
+      let realizedPnL = 0;
+      const costBasisMap: Record<string, { qty: number, totalCost: number, realized: number }> = {};
+
+      trades.forEach((trade: any) => {
+        const t = trade.ticker;
+        if (!costBasisMap[t]) costBasisMap[t] = { qty: 0, totalCost: 0, realized: 0 };
+        const state = costBasisMap[t];
+
+        if (trade.tradeType === 'BUY') {
+          state.qty += trade.quantity;
+          state.totalCost += trade.amount;
+        } else if (trade.tradeType === 'SELL') {
+          if (state.qty > 0) {
+            const avgCostPerShare = state.totalCost / state.qty;
+            const realizedVal = (trade.price - avgCostPerShare) * trade.quantity;
+            realizedPnL += realizedVal;
+            state.realized += realizedVal;
+
+            state.qty -= trade.quantity;
+            state.totalCost -= avgCostPerShare * trade.quantity;
+            if (state.qty <= 0) {
+              state.qty = 0;
+              state.totalCost = 0;
+            }
+          }
+        }
+      });
+      setTotalRealizedPnL(realizedPnL);
+
+      // Fetch latest prices using the dynamic endpoint previously built
+      const priceRes = await fetch('/api/stockprice/market/latest');
       if (!priceRes.ok) throw new Error('Failed to fetch stock prices from backend');
       const latestPrices = await priceRes.json();
 
-      // Create a map for quick price lookup
-      const priceMap: Record<string, number> = {};
-      latestPrices.forEach((p: any) => {
-        if (p.ticker) {
-          priceMap[p.ticker] = parseFloat(p.close);
-        }
-      });
-
       // Map DB models to Frontend Holding interface
       const mappedHoldings: Holding[] = dbHoldings.map((h: any) => {
-        const cPrice = priceMap[h.ticker] || 100.0;
+        const cPrice = latestPrices[h.ticker] || 100.0;
+        
+        let pPrice = cPrice * 0.8;
+        let tRealized = 0;
+        const cb = costBasisMap[h.ticker];
+        if (cb) {
+            tRealized = cb.realized;
+            if (cb.qty > 0) {
+                pPrice = cb.totalCost / cb.qty; // Accurate historical cost basis!
+            }
+        }
+
         return {
           id: h.id.toString(),
           ticker: h.ticker,
@@ -72,7 +115,8 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
           type: 'stock',
           quantity: h.quantity,
           currentPrice: cPrice,
-          purchasePrice: cPrice * 0.8, // mockup purchase price to show some gain
+          purchasePrice: pPrice,
+          realizedPnL: tRealized,
           purchaseDate: h.createdAt ? new Date(h.createdAt).toISOString().split('T')[0] : '2025-01-01'
         };
       });
@@ -95,22 +139,25 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   const addHolding = async (holding: Omit<Holding, 'id'>) => {
     try {
+      const isBuy = holding.quantity > 0;
+      const absQty = Math.abs(holding.quantity);
+
       const res = await fetch('/api/stockholding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ticker: holding.ticker, quantity: holding.quantity })
       });
       if (res.ok) {
-        // Also record a BUY trade for this addition
+        // Also record a BUY or SELL trade for this action
         await fetch('/api/stocktrade', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ticker: holding.ticker,
-            tradeType: 'BUY',
+            tradeType: isBuy ? 'BUY' : 'SELL',
             price: holding.currentPrice,
-            quantity: holding.quantity,
-            amount: holding.currentPrice * holding.quantity,
+            quantity: absQty,
+            amount: holding.currentPrice * absQty,
             ts: new Date().toISOString()
           })
         });
@@ -154,6 +201,7 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       value={{
         holdings,
         performanceData,
+        totalRealizedPnL,
         addHolding,
         updateHolding,
         removeHolding,

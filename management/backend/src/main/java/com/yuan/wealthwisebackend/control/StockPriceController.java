@@ -139,4 +139,22 @@ public class StockPriceController {
         return stockPriceService.listObjs(wrapper, Object::toString);
     }
 
+    /**
+     * 获取所有可用的股票及其最新真实收盘价
+     */
+    @GetMapping("/market/latest")
+    public java.util.Map<String, java.math.BigDecimal> getLatestPrices() {
+        List<String> tickers = getAvailableTickers();
+        java.util.Map<String, java.math.BigDecimal> map = new java.util.HashMap<>();
+        for (String t : tickers) {
+            QueryWrapper<StockPrice> w = new QueryWrapper<>();
+            w.eq("ticker", t).orderByDesc("ts").last("LIMIT 1");
+            StockPrice sp = stockPriceService.getOne(w);
+            if (sp != null) {
+                map.put(t, sp.getClose());
+            }
+        }
+        return map;
+    }
+
 }

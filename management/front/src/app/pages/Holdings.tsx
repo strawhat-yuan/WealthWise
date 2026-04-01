@@ -25,6 +25,7 @@ export default function Holdings() {
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [availableStocks, setAvailableStocks] = useState<string[]>([]);
+  const [latestPrices, setLatestPrices] = useState<Record<string, number>>({});
   const [quantities, setQuantities] = useState<Record<string, string>>({});
 
   // Chart state
@@ -34,10 +35,13 @@ export default function Holdings() {
   const [isChartOpen, setIsChartOpen] = useState(false);
 
   useEffect(() => {
-    fetch('/api/stockprice/tickers')
+    fetch('/api/stockprice/market/latest')
       .then(res => res.json())
-      .then(data => setAvailableStocks(data))
-      .catch(err => console.error('Failed to fetch available stocks:', err));
+      .then((data: Record<string, number>) => {
+        setLatestPrices(data);
+        setAvailableStocks(Object.keys(data).sort());
+      })
+      .catch(err => console.error('Failed to fetch latest prices:', err));
   }, []);
 
   // Show loading skeleton
@@ -96,20 +100,32 @@ export default function Holdings() {
     );
   };
 
-  const handleAddStock = (ticker: string) => {
+  const handleTradeStock = (ticker: string, isBuy: boolean) => {
     const qtyStr = quantities[ticker];
     const qty = parseInt(qtyStr);
     if (!qty || qty <= 0) {
-       alert("Please enter a valid quantity");
+       alert("Please enter a valid positive quantity");
        return;
     }
+    const currentPrice = latestPrices[ticker] || 100;
+    
+    // For Sell, if we don't own enough, maybe alert?
+    if (!isBuy) {
+        const owned = holdings.find(h => h.ticker === ticker)?.quantity || 0;
+        if (qty > owned) {
+            alert(`You cannot sell ${qty} shares. You only own ${owned} shares of ${ticker}.`);
+            return;
+        }
+    }
+
     addHolding({
       ticker,
       name: ticker + " Stock",
       type: "stock",
-      quantity: qty,
-      currentPrice: 100, 
-      purchasePrice: 100,
+      quantity: isBuy ? qty : -qty,
+      currentPrice: currentPrice, 
+      purchasePrice: currentPrice,
+      realizedPnL: 0,
       purchaseDate: new Date().toISOString()
     });
     setQuantities(prev => ({ ...prev, [ticker]: '' }));
@@ -225,13 +241,14 @@ export default function Holdings() {
                   <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('gainLoss')}>
                     <div className="flex items-center justify-end">Gain/Loss{getSortIcon('gainLoss')}</div>
                   </TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right">Realized P&L</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedHoldings.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                       No holdings found. Pick a stock from below to get started.
                     </TableCell>
                   </TableRow>
@@ -267,14 +284,35 @@ export default function Holdings() {
                           )}
                         </TableCell>
                         <TableCell className="text-right">
+                          <div className={holding.realizedPnL >= 0 ? 'text-green-600' : 'text-red-600'}>
+                            <span className="font-medium">{formatCurrency(holding.realizedPnL)}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
+                            <input
+                              type="number"
+                              placeholder="Qty"
+                              min="1"
+                              value={quantities[holding.ticker] || ''}
+                              onChange={(e) => handleQuantityChange(holding.ticker, e.target.value)}
+                              className="w-16 px-2 py-1 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
                             <Button
-                              variant="ghost"
                               size="sm"
-                              onClick={() => removeHolding(holding.id!)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleTradeStock(holding.ticker, true)}
+                              className="bg-green-600 hover:bg-green-700 h-8 px-2"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              Buy
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => handleTradeStock(holding.ticker, false)}
+                              className="h-8 px-2"
+                              disabled={holding.quantity <= 0}
+                            >
+                              Sell
                             </Button>
                           </div>
                         </TableCell>
@@ -288,7 +326,7 @@ export default function Holdings() {
         </CardContent>
       </Card>
 
-      {/* NEW: Stock List for adding holdings */}
+      {/* NEW: Stock List for adding/selling holdings */}
       <Card>
         <CardHeader>
           <CardTitle>Available Stocks Market</CardTitle>
@@ -299,7 +337,8 @@ export default function Holdings() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Ticker</TableHead>
-                  <TableHead className="text-right">Quantity to Add</TableHead>
+                  <TableHead className="text-right">Current Price</TableHead>
+                  <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -314,11 +353,14 @@ export default function Holdings() {
                         {ticker}
                       </button>
                     </TableCell>
+                    <TableCell className="text-right font-medium text-gray-700">
+                      {formatCurrency(latestPrices[ticker] || 0)}
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end">
                         <input
                           type="number"
-                          placeholder="e.g. 100"
+                          placeholder="e.g. 10"
                           min="1"
                           value={quantities[ticker] || ''}
                           onChange={(e) => handleQuantityChange(ticker, e.target.value)}
@@ -327,19 +369,21 @@ export default function Holdings() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        onClick={() => handleAddStock(ticker)}
-                        className="flex items-center gap-1 ml-auto"
-                      >
-                        <Plus className="w-4 h-4" /> Add
-                      </Button>
+                      <div className="flex justify-end">
+                        <Button
+                          size="sm"
+                          onClick={() => handleTradeStock(ticker, true)}
+                          className="bg-green-600 hover:bg-green-700"
+                        >
+                          Buy
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
                 {availableStocks.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center py-4 text-gray-500">
+                    <TableCell colSpan={4} className="text-center py-4 text-gray-500">
                       No stocks available in the market database.
                     </TableCell>
                   </TableRow>

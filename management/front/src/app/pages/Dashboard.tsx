@@ -10,7 +10,7 @@ import { DashboardSkeleton } from '../components/DashboardSkeleton';
 type TimeRange = '1M' | '3M' | '6M' | 'YTD' | 'ALL';
 
 export default function Dashboard() {
-  const { holdings, performanceData, isLoading, error } = usePortfolio();
+  const { holdings, performanceData, totalRealizedPnL, isLoading, error } = usePortfolio();
   const stats = calculatePortfolioStats(holdings);
   const [timeRange, setTimeRange] = useState<TimeRange>('3M');
 
@@ -66,7 +66,7 @@ export default function Dashboard() {
   const filteredPerformanceData = getFilteredPerformanceData();
 
   // Calculate Y-axis domain for better visualization
-  const getYAxisDomain = () => {
+  const getYAxisDomain = (): any => {
     if (filteredPerformanceData.length === 0) return [0, 'auto'];
     
     const values = filteredPerformanceData.map(d => d.value);
@@ -153,24 +153,18 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Best Performer</CardTitle>
-            <TrendingUp className="w-4 h-4 text-green-500" />
+            <CardTitle className="text-sm font-medium text-gray-600">Realized P&L</CardTitle>
+            {totalRealizedPnL >= 0 ? (
+              <TrendingUp className="w-4 h-4 text-green-500" />
+            ) : (
+              <TrendingDown className="w-4 h-4 text-red-500" />
+            )}
           </CardHeader>
           <CardContent>
-            {holdings.length > 0 && (() => {
-              const bestPerformer = holdings.reduce((best, current) => {
-                const currentGain = ((current.currentPrice - current.purchasePrice) / current.purchasePrice) * 100;
-                const bestGain = ((best.currentPrice - best.purchasePrice) / best.purchasePrice) * 100;
-                return currentGain > bestGain ? current : best;
-              });
-              const gain = ((bestPerformer.currentPrice - bestPerformer.purchasePrice) / bestPerformer.purchasePrice) * 100;
-              return (
-                <>
-                  <div className="font-bold text-2xl">{bestPerformer.ticker}</div>
-                  <p className="text-xs text-green-600 mt-1">+{gain.toFixed(2)}%</p>
-                </>
-              );
-            })()}
+            <div className={`font-bold text-2xl ${totalRealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatCurrency(totalRealizedPnL)}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Total closed profit</p>
           </CardContent>
         </Card>
       </div>
