@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
-import { Plus, Trash2, TrendingUp, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Minus, Trash2, TrendingUp, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { HoldingsSkeleton } from '../components/HoldingsSkeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -30,13 +30,18 @@ import {
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 
-type SortField = 'ticker' | 'name' | 'value' | 'gainLoss' | null;
+type SortField = 'ticker' | 'name' | 'value' | 'gainLoss' | 'quantity' | 'price' | 'change' | 'dailyPnL' | null;
+type MarketSortField = 'ticker' | 'name' | 'sector' | 'marketCap' | 'price' | 'change' | null;
 type SortDirection = 'asc' | 'desc';
 
 export default function Holdings() {
-  const { holdings, removeHolding, addHolding, isAdmin, isLoading, error, latestPricesMap, stockMetadata } = usePortfolio();
+  const { holdings, closedHoldings, removeHolding, addHolding, isAdmin, isLoading, error, latestPricesMap, stockMetadata } = usePortfolio();
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [activeTab, setActiveTab] = useState<'active' | 'closed'>('active');
+
+  const [marketSortField, setMarketSortField] = useState<MarketSortField>('ticker');
+  const [marketSortDirection, setMarketSortDirection] = useState<SortDirection>('asc');
   const [historicalPrices, setHistoricalPrices] = useState<Record<string, number>>({});
   const [fetchingPrices, setFetchingPrices] = useState<Record<string, boolean>>({});
 
@@ -53,11 +58,58 @@ export default function Holdings() {
 
   // Chart state
   const [selectedChartTicker, setSelectedChartTicker] = useState<string | null>(null);
+  const [isBuyVisibleInModal, setIsBuyVisibleInModal] = useState(true);
   const [chartData, setChartData] = useState<any[]>([]);
   const [isChartLoading, setIsChartLoading] = useState(false);
   const [isChartOpen, setIsChartOpen] = useState(false);
 
-  const availableTickers = Object.keys(latestPricesMap).sort();
+  const handleMarketSort = (field: MarketSortField) => {
+    if (marketSortField === field) {
+      setMarketSortDirection(marketSortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setMarketSortField(field);
+      setMarketSortDirection('desc');
+    }
+  };
+
+  const availableTickers = Object.keys(latestPricesMap).sort((a, b) => {
+    if (!marketSortField) return 0;
+    let comparison = 0;
+    const aData = latestPricesMap[a];
+    const bData = latestPricesMap[b];
+    const aPrice = termOrVal(aData, 'price');
+    const bPrice = termOrVal(bData, 'price');
+    const aChange = termOrVal(aData, 'changePercent');
+    const bChange = termOrVal(bData, 'changePercent');
+    const aMeta = stockMetadata[a] || {};
+    const bMeta = stockMetadata[b] || {};
+
+    switch (marketSortField) {
+      case 'ticker': comparison = a.localeCompare(b); break;
+      case 'name': comparison = (aMeta.name || a).localeCompare(bMeta.name || b); break;
+      case 'sector': comparison = (aMeta.sector || '').localeCompare(bMeta.sector || ''); break;
+      case 'marketCap': comparison = (aMeta.marketCap || 0) - (bMeta.marketCap || 0); break;
+      case 'price': comparison = aPrice - bPrice; break;
+      case 'change': comparison = aChange - bChange; break;
+    }
+    return marketSortDirection === 'asc' ? comparison : -comparison;
+  });
+
+  function termOrVal(data: any, field: 'price'|'changePercent') {
+    if (data && typeof data === 'object') return data[field] || 0;
+    return field === 'price' ? (typeof data === 'number' ? data : 0) : 0;
+  }
+
+  const getMarketSortIcon = (field: MarketSortField) => {
+    if (marketSortField !== field) {
+      return <ArrowUpDown className="w-3 h-3 ml-1 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />;
+    }
+    return marketSortDirection === 'asc' ? (
+      <ArrowUp className="w-3 h-3 ml-1 text-blue-600" />
+    ) : (
+      <ArrowDown className="w-3 h-3 ml-1 text-blue-600" />
+    );
+  };
 
   // Show loading skeleton
   if (isLoading) {
@@ -92,14 +144,35 @@ export default function Holdings() {
     }
   };
 
-  const sortedHoldings = [...holdings].sort((a, b) => {
+  const displayData = activeTab === 'active' ? holdings.filter(h => Number(h.quantity) > 0) : closedHoldings;
+
+  const sortedHoldings = [...displayData].sort((a, b) => {
     if (!sortField) return 0;
     let comparison = 0;
+    const aValue = calculateHoldingValue(a);
+    const bValue = calculateHoldingValue(b);
+    const aChg = a.changePercent || 0;
+    const bChg = b.changePercent || 0;
+
     switch (sortField) {
       case 'ticker': comparison = a.ticker.localeCompare(b.ticker); break;
       case 'name': comparison = a.name.localeCompare(b.name); break;
-      case 'value': comparison = calculateHoldingValue(a) - calculateHoldingValue(b); break;
-      case 'gainLoss': comparison = calculateHoldingGainLoss(a) - calculateHoldingGainLoss(b); break;
+      case 'quantity': comparison = a.quantity - b.quantity; break;
+      case 'price': comparison = a.currentPrice - b.currentPrice; break;
+      case 'change': comparison = aChg - bChg; break;
+      case 'value': comparison = aValue - bValue; break;
+      case 'dailyPnL': {
+          const aPnL = aValue * (aChg / (100 + aChg));
+          const bPnL = bValue * (bChg / (100 + bChg));
+          comparison = aPnL - bPnL;
+          break;
+      }
+      case 'gainLoss': {
+          const aVal = activeTab === 'active' ? calculateHoldingGainLoss(a) : (a.realizedPnL || 0);
+          const bVal = activeTab === 'active' ? calculateHoldingGainLoss(b) : (b.realizedPnL || 0);
+          comparison = aVal - bVal;
+          break;
+      }
     }
     return sortDirection === 'asc' ? comparison : -comparison;
   });
@@ -194,8 +267,9 @@ export default function Holdings() {
     }
   };
 
-  const handleTickerClick = async (ticker: string) => {
+  const handleTickerClick = async (ticker: string, showBuy: boolean = true) => {
     setSelectedChartTicker(ticker);
+    setIsBuyVisibleInModal(showBuy);
     setIsChartOpen(true);
     setIsChartLoading(true);
     try {
@@ -315,8 +389,26 @@ export default function Holdings() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>All Holdings</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between pb-4">
+          <CardTitle>Portfolio Sections</CardTitle>
+          <div className="flex bg-gray-100 p-1 rounded-lg">
+            <Button
+              variant={activeTab === 'active' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setActiveTab('active')}
+              className="px-4 h-8 text-xs font-bold transition-all"
+            >
+              Active Holdings ({holdings.filter(h => Number(h.quantity) > 0).length})
+            </Button>
+            <Button
+              variant={activeTab === 'closed' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => setActiveTab('closed')}
+              className="px-4 h-8 text-xs font-bold transition-all"
+            >
+              Closed Positions ({closedHoldings.length})
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -329,18 +421,24 @@ export default function Holdings() {
                   <TableHead className="cursor-pointer group" onClick={() => handleSort('name')}>
                     <div className="flex items-center">Name{getSortIcon('name')}</div>
                   </TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Avg. Cost</TableHead>
-                  <TableHead className="text-right">Current Price</TableHead>
-                  <TableHead className="text-right">24h Change</TableHead>
+                  <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('quantity')}>
+                    <div className="flex items-center justify-end">Quantity{getSortIcon('quantity')}</div>
+                  </TableHead>
+                  <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('price')}>
+                    <div className="flex items-center justify-end">Current Price{getSortIcon('price')}</div>
+                  </TableHead>
+                  <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('change')}>
+                    <div className="flex items-center justify-end">24h Change{getSortIcon('change')}</div>
+                  </TableHead>
                   <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('value')}>
                     <div className="flex items-center justify-end">Total Value{getSortIcon('value')}</div>
                   </TableHead>
-                  <TableHead className="text-right">Weight%</TableHead>
                   <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('gainLoss')}>
-                    <div className="flex items-center justify-end">Gain/Loss{getSortIcon('gainLoss')}</div>
+                    <div className="flex items-center justify-end">Cumulative P&L{getSortIcon('gainLoss')}</div>
                   </TableHead>
-                  <TableHead className="text-right">Realized P&L</TableHead>
+                  <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('dailyPnL')}>
+                    <div className="flex items-center justify-end">Daily P&L{getSortIcon('dailyPnL')}</div>
+                  </TableHead>
                   <TableHead className="text-right text-center">Action</TableHead>
                   {isAdmin && <TableHead className="text-center">Admin</TableHead>}
                 </TableRow>
@@ -348,26 +446,36 @@ export default function Holdings() {
               <TableBody>
                 {sortedHoldings.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={isAdmin ? 12 : 11} className="text-center py-8 text-gray-500">
-                      No holdings found. Pick a stock from below to get started.
+                    <TableCell colSpan={isAdmin ? 12 : 11} className="text-center py-12 text-gray-400">
+                      <div className="flex flex-col items-center gap-2">
+                        <p className="text-lg font-medium">No results in {activeTab === 'active' ? 'active holdings' : 'closed positions'}.</p>
+                        <p className="text-sm">Trades you execute will appear here automatically.</p>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ) : (
                   sortedHoldings.map((holding) => {
-                    const value = calculateHoldingValue(holding);
-                    const cost = calculateHoldingCost(holding);
-                    const gainLoss = calculateHoldingGainLoss(holding);
-                    const gainLossPercent = calculateHoldingGainLossPercent(holding);
+                    const value = activeTab === 'active' ? calculateHoldingValue(holding) : 0;
+                    const gainLoss = activeTab === 'active' ? calculateHoldingGainLoss(holding) : (holding.realizedPnL || 0);
+                    const gainLossPercent = activeTab === 'active' ? calculateHoldingGainLossPercent(holding) : 0;
 
                     return (
                       <TableRow key={holding.id}>
-                        <TableCell className="font-medium">{holding.ticker}</TableCell>
-                        <TableCell>{holding.name}</TableCell>
-                        <TableCell className="text-right">{holding.quantity.toLocaleString()}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(holding.purchasePrice)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(holding.currentPrice)}</TableCell>
+                        <TableCell className="font-medium">
+                          <button 
+                            onClick={() => handleTickerClick(holding.ticker, false)}
+                            className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer transition-colors"
+                          >
+                            {holding.ticker}
+                          </button>
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-500">{holding.name}</TableCell>
+                        <TableCell className="text-right font-mono">{holding.quantity.toLocaleString()}</TableCell>
+                        <TableCell className={`text-right font-bold ${(holding.changePercent || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatCurrency(holding.currentPrice)}
+                        </TableCell>
                         <TableCell className="text-right">
-                          <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
+                          <div className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
                             (holding.changePercent || 0) >= 0 
                               ? 'bg-green-100 text-green-700' 
                               : 'bg-red-100 text-red-700'
@@ -375,27 +483,33 @@ export default function Holdings() {
                             {formatPercent(holding.changePercent || 0)}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(value)}</TableCell>
-                        <TableCell className="text-right text-gray-500 font-mono">
-                          {totalPortfolioValue > 0 ? ((value / totalPortfolioValue) * 100).toFixed(1) + '%' : '0%'}
-                        </TableCell>
+                        <TableCell className="text-right font-bold text-gray-900">{formatCurrency(value)}</TableCell>
                         <TableCell className="text-right">
                           {holding.type === 'cash' ? (
                             <span className="text-gray-400">—</span>
                           ) : (
                             <div className={gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}>
                               <div className="flex items-center justify-end gap-1">
-                                {gainLoss >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                                <span className="font-medium">{formatCurrency(gainLoss)}</span>
+                                {gainLoss >= 0 ? <Plus className="w-2 h-2" /> : <Minus className="w-2 h-2" />}
+                                <span className="font-bold">{formatCurrency(Math.abs(gainLoss))}</span>
                               </div>
-                              <div className="text-xs">{formatPercent(gainLossPercent)}</div>
+                              <div className="text-[10px] opacity-80">{formatPercent(gainLossPercent)}</div>
                             </div>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className={holding.realizedPnL >= 0 ? 'text-green-600' : 'text-red-600'}>
-                            <span className="font-medium">{formatCurrency(holding.realizedPnL)}</span>
-                          </div>
+                          {(() => {
+                            const chg = holding.changePercent || 0;
+                            const dailyPnL = value * (chg / (100 + chg));
+                            return (
+                               <div className={`${dailyPnL >= 0 ? 'text-green-600' : 'text-red-600'} font-medium`}>
+                                 <div className="flex items-center justify-end gap-0.5">
+                                   {dailyPnL >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                                   <span>{formatCurrency(Math.abs(dailyPnL))}</span>
+                                 </div>
+                               </div>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2 px-4">
@@ -451,12 +565,24 @@ export default function Holdings() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ticker</TableHead>
-                  <TableHead>Sector</TableHead>
-                  <TableHead className="text-right">Market Cap</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
-                  <TableHead className="text-right">24h Chg</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead className="cursor-pointer group" onClick={() => handleMarketSort('ticker')}>
+                    <div className="flex items-center">Ticker{getMarketSortIcon('ticker')}</div>
+                  </TableHead>
+                  <TableHead className="cursor-pointer group" onClick={() => handleMarketSort('name')}>
+                    <div className="flex items-center">Name{getMarketSortIcon('name')}</div>
+                  </TableHead>
+                  <TableHead className="cursor-pointer group" onClick={() => handleMarketSort('sector')}>
+                    <div className="flex items-center">Sector{getMarketSortIcon('sector')}</div>
+                  </TableHead>
+                  <TableHead className="text-right cursor-pointer group" onClick={() => handleMarketSort('marketCap')}>
+                    <div className="flex items-center justify-end">Market Cap{getMarketSortIcon('marketCap')}</div>
+                  </TableHead>
+                  <TableHead className="text-right cursor-pointer group" onClick={() => handleMarketSort('price')}>
+                    <div className="flex items-center justify-end">Price{getMarketSortIcon('price')}</div>
+                  </TableHead>
+                  <TableHead className="text-right cursor-pointer group" onClick={() => handleMarketSort('change')}>
+                    <div className="flex items-center justify-end">24h Chg{getMarketSortIcon('change')}</div>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -470,12 +596,17 @@ export default function Holdings() {
                     <TableRow key={ticker}>
                       <TableCell className="font-medium">
                         <button 
-                          onClick={() => handleTickerClick(ticker)}
+                          onClick={() => {
+                            handleTickerClick(ticker);
+                            setTradeQty(''); // Clear form when opening
+                            setTradeType('BUY');
+                          }}
                           className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
                         >
                           {ticker}
                         </button>
                       </TableCell>
+                      <TableCell className="text-sm font-medium text-gray-900">{meta.name || ticker}</TableCell>
                       <TableCell>
                         <Badge className={`${getSectorBadgeColor(meta.sector)} text-[10px] px-1.5 py-0`}>
                           {meta.sector || 'Others'}
@@ -484,22 +615,15 @@ export default function Holdings() {
                       <TableCell className="text-right text-gray-500">
                         {formatMarketCap(meta.marketCap)}
                       </TableCell>
-                      <TableCell className="text-right font-medium text-gray-700">
+                      <TableCell className={`text-right font-bold ${
+                        (change || 0) >= 0 ? 'text-green-600' : 'text-red-600'
+                      }`}>
                         {formatCurrency(price || 0)}
                       </TableCell>
                       <TableCell className="text-right">
                         <span className={`text-xs font-bold ${(change || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {formatPercent(change || 0)}
                         </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                         <Button
-                           size="sm"
-                           onClick={() => handleOpenTradeDialog(ticker, 'BUY')}
-                           className="bg-green-600 hover:bg-green-700"
-                         >
-                           Buy
-                         </Button>
                       </TableCell>
                     </TableRow>
                   );
@@ -511,19 +635,77 @@ export default function Holdings() {
       </Card>
 
       <Dialog open={isChartOpen} onOpenChange={setIsChartOpen}>
-        <DialogContent className="sm:max-w-[700px]">
+        <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{selectedChartTicker} - 1 Year Price History</DialogTitle>
+            <DialogTitle className="flex items-center justify-between pr-6">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl font-bold">{selectedChartTicker}</span>
+                <span className="text-gray-500 font-normal">{stockMetadata[selectedChartTicker || '']?.name}</span>
+              </div>
+              <Badge className="bg-blue-100 text-blue-700">{stockMetadata[selectedChartTicker || '']?.sector}</Badge>
+            </DialogTitle>
           </DialogHeader>
-          <div className="h-[400px] w-full mt-4">
+          
+          {/* Professional OHLCV + Price Header Panel */}
+          {!isChartLoading && chartData.length > 0 && (() => {
+            const lastIdx = chartData.length - 1;
+            const latest = chartData[lastIdx];
+            const prev = lastIdx > 0 ? chartData[lastIdx - 1] : latest;
+            const diff = latest.close - prev.close;
+            const diffPct = prev.close !== 0 ? (diff / prev.close) * 100 : 0;
+            
+            const getCompColor = (curr: number, pVal: number) => 
+               curr > pVal ? 'text-green-600' : (curr < pVal ? 'text-red-600' : 'text-gray-900');
+
+            return (
+              <div className="flex items-end justify-between py-6 border-b border-t mt-2 px-2 bg-gray-50/30">
+                {/* Left Side: Large Current Price */}
+                <div className="flex flex-col">
+                  <div className="text-4xl font-black tracking-tighter text-gray-900">
+                    {formatCurrency(latest.close)}
+                  </div>
+                  <div className={`flex items-center gap-2 mt-1 font-bold ${diff >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className="text-sm">{diff >= 0 ? '+' : ''}{formatCurrency(diff)}</span>
+                    <span className="text-sm">({diff >= 0 ? '+' : ''}{diffPct.toFixed(2)}%)</span>
+                  </div>
+                </div>
+
+                {/* Right Side: Detailed Stats with Comparative Color */}
+                <div className="flex gap-8">
+                  {[
+                    { label: 'Open', value: latest.open, pVal: prev.open },
+                    { label: 'High', value: latest.high, pVal: prev.high },
+                    { label: 'Low', value: latest.low, pVal: prev.low },
+                    { label: 'Close', value: latest.close, pVal: prev.close }
+                  ].map((stat, idx) => (
+                    <div key={idx} className="text-right">
+                      <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">{stat.label}</p>
+                      <p className={`text-sm font-bold mt-0.5 ${getCompColor(stat.value, stat.pVal)}`}>
+                        {formatCurrency(stat.value)}
+                      </p>
+                    </div>
+                  ))}
+                  <div className="text-right">
+                    <p className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Volume</p>
+                    <p className="text-sm font-bold mt-0.5 text-gray-700">
+                      {latest.volume?.toLocaleString() || '—'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="h-[350px] w-full mt-6 bg-gray-50/50 rounded-xl p-2 border border-dashed border-gray-200">
             {isChartLoading ? (
               <div className="flex h-full items-center justify-center text-gray-500">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mr-2"></div>
                 Loading chart data...
               </div>
             ) : chartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                   <XAxis 
                     dataKey="ts" 
                     tickFormatter={(val) => {
@@ -531,15 +713,17 @@ export default function Holdings() {
                       return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear().toString().substr(-2)}`;
                     }} 
                     minTickGap={30}
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                    axisLine={false}
                   />
                   <YAxis 
                     domain={['auto', 'auto']}
                     tickFormatter={(val) => `$${val}`}
-                    tick={{ fontSize: 12 }}
+                    tick={{ fontSize: 11, fill: '#6b7280' }}
+                    axisLine={false}
                   />
                   <Tooltip content={<CustomTooltip />} />
-                  <Line type="monotone" dataKey="close" stroke="#3b82f6" dot={false} strokeWidth={2} />
+                  <Line type="monotone" dataKey="close" stroke="#3b82f6" dot={false} strokeWidth={3} />
                   <Line 
                     type="monotone" 
                     dataKey="buyEventPrice" 
@@ -555,6 +739,75 @@ export default function Holdings() {
               </div>
             )}
           </div>
+          
+          {!isChartLoading && selectedChartTicker && isBuyVisibleInModal && (
+            <div className="mt-8 border-t pt-6 bg-blue-50/30 -mx-6 px-6 pb-2">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <Plus className="w-5 h-5 text-blue-600" />
+                    Quick Buy {selectedChartTicker}
+                  </h3>
+                  <div className="text-sm font-medium text-gray-600 bg-white px-3 py-1 rounded-full border">
+                    Latest: <span className="text-blue-600">{formatCurrency(latestPricesMap[selectedChartTicker]?.price || 100)}</span>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-6 mt-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="qty-dialog" className="text-sm font-semibold">Quantity</Label>
+                    <Input
+                      id="qty-dialog"
+                      type="number"
+                      min="1"
+                      placeholder="Number of shares..."
+                      value={tradeQty}
+                      onChange={(e) => setTradeQty(e.target.value)}
+                      className="bg-white border-blue-100"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="date-dialog" className="text-sm font-semibold">Trade Date</Label>
+                    <Input
+                      id="date-dialog"
+                      type="datetime-local"
+                      value={tradeDate}
+                      onChange={(e) => handleDateChange(selectedChartTicker, e.target.value)}
+                      className="bg-white border-blue-100"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-blue-100 shadow-sm mt-2">
+                   <div className="flex flex-col">
+                     <span className="text-xs text-gray-500 uppercase font-bold tracking-tight">Estimated Total</span>
+                     <span className="text-2xl font-black text-blue-700">
+                        {(() => {
+                           const marketData = latestPricesMap[selectedChartTicker];
+                           const latestPrice = marketData && typeof marketData === 'object' ? marketData.price : marketData;
+                           const price = historicalPrices[`${selectedChartTicker}_${tradeDate.split('T')[0]}`] || latestPrice || 0;
+                           const qty = parseInt(tradeQty) || 0;
+                           return formatCurrency(price * qty);
+                        })()}
+                     </span>
+                   </div>
+                   <Button 
+                     className="bg-blue-600 hover:bg-blue-700 h-12 px-10 text-lg font-bold shadow-lg shadow-blue-200 transition-all active:scale-95" 
+                     onClick={async () => {
+                        await handleConfirmTrade();
+                        setIsChartOpen(false); // Close on success
+                     }}
+                     disabled={!tradeQty || parseInt(tradeQty) <= 0}
+                   >
+                     Confirm Buy
+                   </Button>
+                </div>
+                <p className="text-[10px] text-gray-400 text-center mt-2">
+                  * Prices are based on historical closing data for the selected date. Using current market price if no historical data found.
+                </p>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

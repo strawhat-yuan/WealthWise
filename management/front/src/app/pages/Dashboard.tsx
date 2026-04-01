@@ -262,7 +262,12 @@ export default function Dashboard() {
                     <Cell key={`holding-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Tooltip 
+                  formatter={(value: number) => {
+                    const percent = stats.totalValue > 0 ? ((value / stats.totalValue) * 100).toFixed(1) : '0';
+                    return [`${formatCurrency(value)} (${percent}%)`, 'Value'];
+                  }} 
+                />
                 <Legend layout="horizontal" verticalAlign="bottom" align="center" iconType="circle" />
               </PieChart>
             </ResponsiveContainer>

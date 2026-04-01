@@ -5,6 +5,7 @@ import { Holding, PerformanceData } from '../types/portfolio';
 
 interface PortfolioContextType {
   holdings: Holding[];
+  closedHoldings: Holding[];
   performanceData: PerformanceData[];
   totalRealizedPnL: number;
   role: 'user' | 'admin';
@@ -28,6 +29,7 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
     return (localStorage.getItem('wealthwise_role') as any) || 'user';
   });
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [closedHoldings, setClosedHoldings] = useState<Holding[]>([]);
   const [performanceData, setPerformanceData] = useState<PerformanceData[]>([]);
   const [totalRealizedPnL, setTotalRealizedPnL] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -135,6 +137,39 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       });
 
       setHoldings(mappedHoldings);
+
+      // --- NEW: Map Closed Holdings (qty = 0 but have realized pnl) ---
+      const closedHoldings: Holding[] = Object.keys(costBasisMap)
+        .filter(t => Math.abs(costBasisMap[t].realized) > 0.01) // Show any ticker with history of realized pnl
+        .map(t => {
+            const cb = costBasisMap[t];
+            const info = stockInfoMap[t] || {};
+            const rawData = latestPricesMap[t];
+            const cPrice = rawData && typeof rawData === 'object' ? (rawData.price || 100.0) : (typeof rawData === 'number' ? rawData : 100.0);
+            const changePct = rawData && typeof rawData === 'object' ? (rawData.changePercent || 0) : 0;
+            
+            return {
+              id: 'closed-' + t,
+              ticker: t,
+              name: info.name || t + ' Stock',
+              type: 'stock' as const,
+              quantity: 0,
+              currentPrice: cPrice,
+              purchasePrice: cb.totalCost / (cb.qty || 1), // Legacy or average cost before closing
+              realizedPnL: cb.realized,
+              purchaseDate: (() => {
+                  const firstTrade = trades.find((tr: any) => tr.ticker === t);
+                  if (!firstTrade) return '2025-01-01';
+                  return new Date(firstTrade.ts).toISOString().split('T')[0];
+              })(),
+              sector: info.sector || 'Others',
+              marketCap: info.marketCap || 0,
+              changePercent: changePct
+            };
+        })
+        .filter(h => Math.abs(h.realizedPnL) > 0.01); // Only show those with meaningful pnl
+
+      setClosedHoldings(closedHoldings);
       setLatestPricesMap(latestPricesMap);
       setStockMetadata(stockInfoMap);
 
@@ -313,6 +348,7 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
     <PortfolioContext.Provider
       value={{
         holdings,
+        closedHoldings,
         performanceData,
         totalRealizedPnL,
         role,
