@@ -2,6 +2,7 @@ package com.yuan.wealthwisebackend.control;
 
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.yuan.wealthwisebackend.model.dto.StockPositionDTO;
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -10,6 +11,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yuan.wealthwisebackend.service.StockTradeService;
 import com.yuan.wealthwisebackend.model.entity.StockTrade;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @RestController
@@ -154,5 +156,25 @@ public class StockTradeController {
     @DeleteMapping("/batch")
     public boolean deleteBatch(@RequestParam List<Long> ids) {
         return stockTradeService.removeByIds(ids);
+    }
+
+    @GetMapping("/position/{ticker}")
+    public StockPositionDTO getPosition(
+            @PathVariable String ticker,
+            @RequestParam(required = false) BigDecimal currentPrice) {
+
+        if (currentPrice != null) {
+            return stockTradeService.getPositionWithSuggestion(ticker, currentPrice);
+        } else {
+            return stockTradeService.calculatePosition(ticker);
+        }
+    }
+
+    /**
+     * 获取所有持仓股票的成本（不含建议）
+     */
+    @GetMapping("/positions")
+    public List<StockPositionDTO> getAllPositions() {
+        return stockTradeService.calculateAllPositions();
     }
 }

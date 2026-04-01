@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Data
+@Deprecated
 public class PriceData {
     private List<Double> close;
     private List<Long> volume;

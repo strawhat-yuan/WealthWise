@@ -9,6 +9,7 @@ import org.springframework.web.client.RestTemplate;
 
 @Slf4j
 @Service
+@Deprecated
 public class StockDataService {
     private static final String API_URL =
             "https://c4rm9elh30.execute-api.us-east-1.amazonaws.com/default/cachedPriceData";
