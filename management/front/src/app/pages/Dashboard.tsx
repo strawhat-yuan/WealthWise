@@ -1,0 +1,307 @@
+import { usePortfolio } from '../context/PortfolioContext';
+import { calculatePortfolioStats, formatCurrency, formatPercent } from '../utils/portfolioUtils';
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { TrendingUp, TrendingDown, DollarSign, Percent } from 'lucide-react';
+import { useState } from 'react';
+import { Button } from '../components/ui/button';
+import { DashboardSkeleton } from '../components/DashboardSkeleton';
+
+type TimeRange = '1M' | '3M' | '6M' | 'YTD' | 'ALL';
+
+export default function Dashboard() {
+  const { holdings, performanceData, isLoading, error } = usePortfolio();
+  const stats = calculatePortfolioStats(holdings);
+  const [timeRange, setTimeRange] = useState<TimeRange>('3M');
+
+  // Show loading skeleton
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
+
+  // Show error message
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Card className="max-w-md">
+          <CardHeader>
+            <CardTitle className="text-red-600">Error Loading Data</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-gray-600">{error}</p>
+            <p className="text-sm text-gray-500 mt-2">
+              Please check your connection and try again.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Filter performance data based on time range
+  const getFilteredPerformanceData = () => {
+    const now = new Date('2026-03-30'); // Using the current date from the context
+    let startDate = new Date(now);
+
+    switch (timeRange) {
+      case '1M':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      case '3M':
+        startDate.setMonth(now.getMonth() - 3);
+        break;
+      case '6M':
+        startDate.setMonth(now.getMonth() - 6);
+        break;
+      case 'YTD':
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      case 'ALL':
+        return performanceData;
+    }
+
+    return performanceData.filter(d => new Date(d.date) >= startDate);
+  };
+
+  const filteredPerformanceData = getFilteredPerformanceData();
+
+  // Calculate Y-axis domain for better visualization
+  const getYAxisDomain = () => {
+    if (filteredPerformanceData.length === 0) return [0, 'auto'];
+    
+    const values = filteredPerformanceData.map(d => d.value);
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const padding = (maxValue - minValue) * 0.1; // 10% padding
+    
+    return [
+      Math.max(0, Math.floor((minValue - padding) / 1000) * 1000),
+      Math.ceil((maxValue + padding) / 1000) * 1000
+    ];
+  };
+
+  // Prepare data for pie chart (by asset type)
+  const assetAllocation = holdings.reduce((acc, holding) => {
+    const value = holding.quantity * holding.currentPrice;
+    const existing = acc.find(item => item.name === holding.type);
+    if (existing) {
+      existing.value += value;
+    } else {
+      acc.push({ name: holding.type, value });
+    }
+    return acc;
+  }, [] as { name: string; value: number }[]);
+
+  // Prepare data for pie chart (by holding)
+  const topHoldingsData = holdings
+    .map(holding => ({
+      name: holding.ticker,
+      value: holding.quantity * holding.currentPrice,
+    }))
+    .sort((a, b) => b.value - a.value);
+
+  // Take top 5 and group the rest as "Other"
+  const topHoldings = topHoldingsData.slice(0, 5);
+  const otherHoldingsValue = topHoldingsData
+    .slice(5)
+    .reduce((sum, holding) => sum + holding.value, 0);
+
+  // Add "Other" category if there are more than 5 holdings
+  const holdingsChartData = otherHoldingsValue > 0
+    ? [...topHoldings, { name: 'Other', value: otherHoldingsValue }]
+    : topHoldings;
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+
+  return (
+    <div className="space-y-6">
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Value</CardTitle>
+            <DollarSign className="w-4 h-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="font-bold text-2xl">{formatCurrency(stats.totalValue)}</div>
+            <p className="text-xs text-gray-500 mt-1">
+              Cost: {formatCurrency(stats.totalCost)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Gain/Loss</CardTitle>
+            {stats.totalGainLoss >= 0 ? (
+              <TrendingUp className="w-4 h-4 text-green-500" />
+            ) : (
+              <TrendingDown className="w-4 h-4 text-red-500" />
+            )}
+          </CardHeader>
+          <CardContent>
+            <div className={`font-bold text-2xl ${stats.totalGainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatCurrency(stats.totalGainLoss)}
+            </div>
+            <p className={`text-xs mt-1 ${stats.totalGainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatPercent(stats.totalGainLossPercent)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total Holdings</CardTitle>
+            <Percent className="w-4 h-4 text-gray-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="font-bold text-2xl">{holdings.length}</div>
+            <p className="text-xs text-gray-500 mt-1">
+              {holdings.filter(h => h.type === 'stock').length} stocks
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Best Performer</CardTitle>
+            <TrendingUp className="w-4 h-4 text-green-500" />
+          </CardHeader>
+          <CardContent>
+            {holdings.length > 0 && (() => {
+              const bestPerformer = holdings.reduce((best, current) => {
+                const currentGain = ((current.currentPrice - current.purchasePrice) / current.purchasePrice) * 100;
+                const bestGain = ((best.currentPrice - best.purchasePrice) / best.purchasePrice) * 100;
+                return currentGain > bestGain ? current : best;
+              });
+              const gain = ((bestPerformer.currentPrice - bestPerformer.purchasePrice) / bestPerformer.purchasePrice) * 100;
+              return (
+                <>
+                  <div className="font-bold text-2xl">{bestPerformer.ticker}</div>
+                  <p className="text-xs text-green-600 mt-1">+{gain.toFixed(2)}%</p>
+                </>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Performance Chart */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Portfolio Performance</CardTitle>
+            <div className="flex gap-1">
+              {(['1M', '3M', '6M', 'YTD', 'ALL'] as TimeRange[]).map((range) => (
+                <Button
+                  key={range}
+                  variant={timeRange === range ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setTimeRange(range)}
+                  className="h-7 px-2 text-xs"
+                >
+                  {range}
+                </Button>
+              ))}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={filteredPerformanceData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(value) => {
+                    const date = new Date(value);
+                    return `${date.getMonth() + 1}/${date.getDate()}`;
+                  }}
+                  tick={{ fontSize: 12 }}
+                />
+                <YAxis
+                  tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                  tick={{ fontSize: 12 }}
+                  domain={getYAxisDomain()}
+                />
+                <Tooltip
+                  formatter={(value: number) => [formatCurrency(value), 'Value']}
+                  labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                />
+                <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Asset Allocation Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Asset Allocation</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={assetAllocation}
+                  cx="50%"
+                  cy="45%"
+                  labelLine={false}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {assetAllocation.map((entry, index) => (
+                    <Cell key={`asset-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  formatter={(value: number) => [
+                    `${formatCurrency(value)} (${((value / stats.totalValue) * 100).toFixed(1)}%)`,
+                    'Value'
+                  ]} 
+                />
+                <Legend 
+                  verticalAlign="bottom"
+                  height={36}
+                  formatter={(value, entry: any) => {
+                    const percentage = ((entry.payload.value / stats.totalValue) * 100).toFixed(1);
+                    return `${value}: ${percentage}%`;
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Top Holdings Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Top 5 Holdings by Value</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={holdingsChartData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={(entry) => `${entry.name}: ${formatCurrency(entry.value)}`}
+                outerRadius={100}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {holdingsChartData.map((entry, index) => (
+                  <Cell key={`holding-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
