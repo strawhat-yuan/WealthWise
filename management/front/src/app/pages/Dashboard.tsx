@@ -100,7 +100,32 @@ export default function Dashboard() {
     ? [...topHoldings, { name: 'Other', value: otherHoldingsValue }]
     : topHoldings;
 
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+  // Prepare data for Sector distribution chart
+  const sectorMap: Record<string, number> = {};
+  holdings.forEach(h => {
+    const sector = h.sector || 'Others';
+    // Defense: Ensure we don't use NaN in chart calculations
+    const value = (h.quantity || 0) * (h.currentPrice || 0);
+    if (!isNaN(value) && value > 0) {
+      sectorMap[sector] = (sectorMap[sector] || 0) + value;
+    }
+  });
+
+  const sectorChartData = Object.entries(sectorMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#14b8a6'];
+  const SECTOR_COLORS: Record<string, string> = {
+    'Technology': '#6366f1', // Indigo
+    'Financial': '#0ea5e9', // Sky
+    'Healthcare': '#10b981', // Emerald
+    'Energy': '#f59e0b', // Amber
+    'Automotive': '#64748b', // Slate
+    'Communication Services': '#f43f5e', // Rose
+    'Consumer Cyclical': '#f97316', // Orange
+    'Others': '#94a3b8'
+  };
 
   return (
     <div className="space-y-6">
@@ -217,9 +242,9 @@ export default function Dashboard() {
         </Card>
 
         {/* Top Holdings Chart */}
-        <Card>
+        <Card className="lg:col-span-1">
           <CardHeader>
-            <CardTitle>Top 5 Holdings by Value</CardTitle>
+            <CardTitle>Asset Allocation (by Ticker)</CardTitle>
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
@@ -228,10 +253,9 @@ export default function Dashboard() {
                   data={holdingsChartData}
                   cx="50%"
                   cy="50%"
-                  labelLine={false}
-                  label={(entry) => `${entry.name}: ${formatCurrency(entry.value)}`}
-                  outerRadius={100}
-                  fill="#8884d8"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
                   dataKey="value"
                 >
                   {holdingsChartData.map((entry, index) => (
@@ -239,7 +263,38 @@ export default function Dashboard() {
                   ))}
                 </Pie>
                 <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                <Legend />
+                <Legend layout="horizontal" verticalAlign="bottom" align="center" iconType="circle" />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Sector Allocation Chart */}
+        <Card className="lg:col-span-1">
+          <CardHeader>
+            <CardTitle>Sector Allocation</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={sectorChartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {sectorChartData.map((entry, index) => (
+                    <Cell 
+                        key={`sector-${entry.name}-${index}`} 
+                        fill={SECTOR_COLORS[entry.name] || COLORS[index % COLORS.length]} 
+                    />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Legend layout="horizontal" verticalAlign="bottom" align="center" iconType="circle" />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>

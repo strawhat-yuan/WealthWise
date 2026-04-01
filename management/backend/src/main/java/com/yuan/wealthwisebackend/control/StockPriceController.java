@@ -1,14 +1,17 @@
 package com.yuan.wealthwisebackend.control;
 
-
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.yuan.wealthwisebackend.model.dto.MarketDataDTO;
 import com.yuan.wealthwisebackend.model.entity.StockPrice;
 import com.yuan.wealthwisebackend.service.StockPriceService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.RoundingMode;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/stockprice")
@@ -40,7 +43,6 @@ public class StockPriceController {
     public StockPrice getById(@PathVariable Long id) {
         return stockPriceService.getById(id);
     }
-
 
     /**
      * 查询全部
@@ -152,21 +154,31 @@ public class StockPriceController {
     }
 
     /**
-     * 获取所有可用的股票及其最新真实收盘价
+     * 获取所有可用的股票及其最新市场数据 (价格 + 24h 涨跌幅)
      */
     @GetMapping("/market/latest")
-    public java.util.Map<String, java.math.BigDecimal> getLatestPrices() {
+    public Map<String, MarketDataDTO> getLatestPrices() {
         List<String> tickers = getAvailableTickers();
-        java.util.Map<String, java.math.BigDecimal> map = new java.util.HashMap<>();
+        Map<String, MarketDataDTO> map = new HashMap<>();
         for (String t : tickers) {
             QueryWrapper<StockPrice> w = new QueryWrapper<>();
-            w.eq("ticker", t).orderByDesc("ts").last("LIMIT 1");
-            StockPrice sp = stockPriceService.getOne(w);
-            if (sp != null) {
-                map.put(t, sp.getClose());
+            // 取最后两条价格记录来计算涨跌幅
+            w.eq("ticker", t).orderByDesc("ts").last("LIMIT 2");
+            List<StockPrice> history = stockPriceService.list(w);
+            if (history != null && history.size() > 0) {
+                StockPrice latest = history.get(0);
+                java.math.BigDecimal changePercent = java.math.BigDecimal.ZERO;
+                if (history.size() > 1) {
+                    StockPrice prev = history.get(1);
+                    if (prev.getClose().compareTo(java.math.BigDecimal.ZERO) != 0) {
+                        changePercent = latest.getClose().subtract(prev.getClose())
+                                .divide(prev.getClose(), 4, RoundingMode.HALF_UP)
+                                .multiply(new java.math.BigDecimal("100"));
+                    }
+                }
+                map.put(t, new MarketDataDTO(latest.getClose(), changePercent));
             }
         }
         return map;
     }
-
 }

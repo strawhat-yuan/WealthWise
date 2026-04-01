@@ -7,6 +7,7 @@ import {
   calculateHoldingGainLossPercent,
   formatCurrency,
   formatPercent,
+  formatMarketCap,
 } from '../utils/portfolioUtils';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -33,11 +34,9 @@ type SortField = 'ticker' | 'name' | 'value' | 'gainLoss' | null;
 type SortDirection = 'asc' | 'desc';
 
 export default function Holdings() {
-  const { holdings, removeHolding, addHolding, isAdmin, isLoading, error } = usePortfolio();
+  const { holdings, removeHolding, addHolding, isAdmin, isLoading, error, latestPricesMap, stockMetadata } = usePortfolio();
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-  const [availableStocks, setAvailableStocks] = useState<string[]>([]);
-  const [latestPrices, setLatestPrices] = useState<Record<string, number>>({});
   const [historicalPrices, setHistoricalPrices] = useState<Record<string, number>>({});
   const [fetchingPrices, setFetchingPrices] = useState<Record<string, boolean>>({});
 
@@ -58,15 +57,7 @@ export default function Holdings() {
   const [isChartLoading, setIsChartLoading] = useState(false);
   const [isChartOpen, setIsChartOpen] = useState(false);
 
-  useEffect(() => {
-    fetch('/api/stockprice/market/latest')
-      .then(res => res.json())
-      .then((data: Record<string, number>) => {
-        setLatestPrices(data);
-        setAvailableStocks(Object.keys(data).sort());
-      })
-      .catch(err => console.error('Failed to fetch latest prices:', err));
-  }, []);
+  const availableTickers = Object.keys(latestPricesMap).sort();
 
   // Show loading skeleton
   if (isLoading) {
@@ -149,7 +140,9 @@ export default function Holdings() {
     const dateOnly = tradeDate.split('T')[0];
     
     // Use cached historical price or latest price
-    let executionPrice = historicalPrices[`${ticker}_${dateOnly}`] || latestPrices[ticker] || 100;
+    const latestData = latestPricesMap[ticker];
+    const latestPrice = typeof latestData === 'object' ? latestData.price : latestData;
+    let executionPrice = historicalPrices[`${ticker}_${dateOnly}`] || latestPrice || 100;
 
     const tradeTs = new Date(tradeDate).toISOString();
     
@@ -252,11 +245,24 @@ export default function Holdings() {
 
   const getAssetTypeBadgeColor = (type: string) => {
     switch (type) {
-      case 'stock': return 'bg-blue-100 text-blue-800';
-      case 'bond': return 'bg-green-100 text-green-800';
-      case 'cash': return 'bg-gray-100 text-gray-800';
-      case 'etf': return 'bg-purple-100 text-purple-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'stock': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'bond': return 'bg-purple-100 text-purple-800 border-purple-200';
+      case 'cash': return 'bg-green-100 text-green-800 border-green-200';
+      case 'etf': return 'bg-orange-100 text-orange-800 border-orange-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
+    }
+  };
+
+  const getSectorBadgeColor = (sector?: string) => {
+    switch (sector?.toLowerCase()) {
+      case 'technology': return 'bg-indigo-100 text-indigo-800 border-indigo-200';
+      case 'financial': return 'bg-sky-100 text-sky-800 border-sky-200';
+      case 'healthcare': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'energy': return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'automotive': return 'bg-slate-100 text-slate-800 border-slate-200';
+      case 'communication services': return 'bg-rose-100 text-rose-800 border-rose-200';
+      case 'consumer cyclical': return 'bg-orange-100 text-orange-800 border-orange-200';
+      default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
 
@@ -279,6 +285,8 @@ export default function Holdings() {
     }
     return null;
   };
+
+  const totalPortfolioValue = holdings.reduce((sum, holding) => sum + (holding.quantity * holding.currentPrice), 0);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
@@ -321,25 +329,26 @@ export default function Holdings() {
                   <TableHead className="cursor-pointer group" onClick={() => handleSort('name')}>
                     <div className="flex items-center">Name{getSortIcon('name')}</div>
                   </TableHead>
-                  <TableHead>Type</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
                   <TableHead className="text-right">Avg. Cost</TableHead>
                   <TableHead className="text-right">Current Price</TableHead>
+                  <TableHead className="text-right">24h Change</TableHead>
                   <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('value')}>
                     <div className="flex items-center justify-end">Total Value{getSortIcon('value')}</div>
                   </TableHead>
+                  <TableHead className="text-right">Weight%</TableHead>
                   <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('gainLoss')}>
                     <div className="flex items-center justify-end">Gain/Loss{getSortIcon('gainLoss')}</div>
                   </TableHead>
                   <TableHead className="text-right">Realized P&L</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead className="text-right text-center">Action</TableHead>
                   {isAdmin && <TableHead className="text-center">Admin</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedHoldings.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={isAdmin ? 11 : 10} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={isAdmin ? 12 : 11} className="text-center py-8 text-gray-500">
                       No holdings found. Pick a stock from below to get started.
                     </TableCell>
                   </TableRow>
@@ -354,13 +363,22 @@ export default function Holdings() {
                       <TableRow key={holding.id}>
                         <TableCell className="font-medium">{holding.ticker}</TableCell>
                         <TableCell>{holding.name}</TableCell>
-                        <TableCell>
-                          <Badge className={getAssetTypeBadgeColor(holding.type)}>{holding.type}</Badge>
-                        </TableCell>
                         <TableCell className="text-right">{holding.quantity.toLocaleString()}</TableCell>
                         <TableCell className="text-right">{formatCurrency(holding.purchasePrice)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(holding.currentPrice)}</TableCell>
+                        <TableCell className="text-right">
+                          <div className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
+                            (holding.changePercent || 0) >= 0 
+                              ? 'bg-green-100 text-green-700' 
+                              : 'bg-red-100 text-red-700'
+                          }`}>
+                            {formatPercent(holding.changePercent || 0)}
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right font-medium">{formatCurrency(value)}</TableCell>
+                        <TableCell className="text-right text-gray-500 font-mono">
+                          {totalPortfolioValue > 0 ? ((value / totalPortfolioValue) * 100).toFixed(1) + '%' : '0%'}
+                        </TableCell>
                         <TableCell className="text-right">
                           {holding.type === 'cash' ? (
                             <span className="text-gray-400">—</span>
@@ -380,7 +398,7 @@ export default function Holdings() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-2 px-4">
                               <Button
                                 size="sm"
                                 onClick={() => handleOpenTradeDialog(holding.ticker, 'BUY')}
@@ -434,35 +452,58 @@ export default function Holdings() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Ticker</TableHead>
-                  <TableHead className="text-right">Current Price</TableHead>
-                  <TableHead className="text-right">Quantity</TableHead>
+                  <TableHead>Sector</TableHead>
+                  <TableHead className="text-right">Market Cap</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">24h Chg</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {availableStocks.map((ticker) => (
-                  <TableRow key={ticker}>
-                    <TableCell className="font-medium">
-                      <button 
-                        onClick={() => handleTickerClick(ticker)}
-                        className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                      >
-                        {ticker}
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-gray-700">
-                      {formatCurrency(latestPrices[ticker] || 0)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                       <Button
-                         size="sm"
-                         onClick={() => handleOpenTradeDialog(ticker, 'BUY')}
-                         className="bg-green-600 hover:bg-green-700"
-                       >
-                         Buy
-                       </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {availableTickers.map((ticker) => {
+                   const marketData = latestPricesMap[ticker];
+                   const price = marketData && typeof marketData === 'object' ? marketData.price : marketData;
+                   const change = marketData && typeof marketData === 'object' ? marketData.changePercent : 0;
+                   const meta = stockMetadata[ticker] || {};
+
+                   return (
+                    <TableRow key={ticker}>
+                      <TableCell className="font-medium">
+                        <button 
+                          onClick={() => handleTickerClick(ticker)}
+                          className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                        >
+                          {ticker}
+                        </button>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`${getSectorBadgeColor(meta.sector)} text-[10px] px-1.5 py-0`}>
+                          {meta.sector || 'Others'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-gray-500">
+                        {formatMarketCap(meta.marketCap)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium text-gray-700">
+                        {formatCurrency(price || 0)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className={`text-xs font-bold ${(change || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {formatPercent(change || 0)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                         <Button
+                           size="sm"
+                           onClick={() => handleOpenTradeDialog(ticker, 'BUY')}
+                           className="bg-green-600 hover:bg-green-700"
+                         >
+                           Buy
+                         </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>
@@ -561,20 +602,22 @@ export default function Holdings() {
                   ) : historicalPrices[`${selectedTradeTicker}_${tradeDate.split('T')[0]}`] ? (
                     formatCurrency(historicalPrices[`${selectedTradeTicker}_${tradeDate.split('T')[0]}`])
                   ) : (
-                    <span className="text-amber-600">N/A (Using Latest: {formatCurrency(latestPrices[selectedTradeTicker] || 0)})</span>
+                    <span className="text-amber-600">N/A (Using Latest: {formatCurrency(latestPricesMap[selectedTradeTicker] || 0)})</span>
                   )}
                 </span>
               </div>
-              <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
-                <span>Total Amount</span>
-                <span className="text-blue-600">
-                   {(() => {
-                      const price = historicalPrices[`${selectedTradeTicker}_${tradeDate.split('T')[0]}`] || latestPrices[selectedTradeTicker] || 0;
-                      const qty = parseInt(tradeQty) || 0;
-                      return formatCurrency(price * qty);
-                   })()}
-                </span>
-              </div>
+               <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
+                 <span>Total Amount</span>
+                 <span className="text-blue-600">
+                    {(() => {
+                       const marketData = latestPricesMap[selectedTradeTicker];
+                       const latestPrice = marketData && typeof marketData === 'object' ? marketData.price : marketData;
+                       const price = historicalPrices[`${selectedTradeTicker}_${tradeDate.split('T')[0]}`] || latestPrice || 0;
+                       const qty = parseInt(tradeQty) || 0;
+                       return formatCurrency(price * qty);
+                    })()}
+                 </span>
+               </div>
             </div>
           </div>
           <div className="flex justify-end gap-3 mt-4">

@@ -10,6 +10,9 @@ export interface Holding {
   currentPrice: number;
   realizedPnL: number;
   purchaseDate: string;
+  sector?: string;
+  marketCap?: number;
+  changePercent?: number;
 }
 
 export interface PerformanceData {

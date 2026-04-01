@@ -17,6 +17,8 @@ interface PortfolioContextType {
   isLoading: boolean;
   error: string | null;
   refreshData: () => void;
+  latestPricesMap: Record<string, any>;
+  stockMetadata: Record<string, any>;
 }
 
 const PortfolioContext = createContext<PortfolioContextType | undefined>(undefined);
@@ -30,6 +32,8 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [totalRealizedPnL, setTotalRealizedPnL] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [latestPricesMap, setLatestPricesMap] = useState<Record<string, any>>({});
+  const [stockMetadata, setStockMetadata] = useState<Record<string, any>>({});
 
   const setRole = (newRole: 'user' | 'admin') => {
     setRoleState(newRole);
@@ -89,11 +93,20 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       // Fetch latest prices using the dynamic endpoint previously built
       const priceRes = await fetch('/api/stockprice/market/latest');
       if (!priceRes.ok) throw new Error('Failed to fetch stock prices from backend');
-      const latestPrices = await priceRes.json();
+      const latestPricesMap = await priceRes.json();
+
+      // --- NEW: Fetch Stock Metadata (Sector, Market Cap, Name) ---
+      const infoRes = await fetch('/api/stockinfo/map');
+      const stockInfoMap = infoRes.ok ? await infoRes.json() : {};
 
       // Map DB models to Frontend Holding interface
       const mappedHoldings: Holding[] = dbHoldings.map((h: any) => {
-        const cPrice = latestPrices[h.ticker] || 100.0;
+        const rawData = latestPricesMap[h.ticker];
+        // Defensive check: Handle both raw number (legacy/fallback) and DTO object
+        const cPrice = rawData && typeof rawData === 'object' ? (rawData.price || 100.0) : (typeof rawData === 'number' ? rawData : 100.0);
+        const changePct = rawData && typeof rawData === 'object' ? (rawData.changePercent || 0) : 0;
+        
+        const info = stockInfoMap[h.ticker] || {};
         
         let pPrice = cPrice * 0.8;
         let tRealized = 0;
@@ -108,17 +121,22 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
         return {
           id: h.id.toString(),
           ticker: h.ticker,
-          name: h.ticker + ' Stock', // Placeholder name
+          name: info.name || h.ticker + ' Stock',
           type: 'stock',
           quantity: h.quantity,
           currentPrice: cPrice,
           purchasePrice: pPrice,
           realizedPnL: tRealized,
-          purchaseDate: h.createdAt ? new Date(h.createdAt).toISOString().split('T')[0] : '2025-01-01'
+          purchaseDate: h.createdAt ? new Date(h.createdAt).toISOString().split('T')[0] : '2025-01-01',
+          sector: info.sector || 'Others',
+          marketCap: info.marketCap || 0,
+          changePercent: changePct
         };
       });
 
       setHoldings(mappedHoldings);
+      setLatestPricesMap(latestPricesMap);
+      setStockMetadata(stockInfoMap);
 
       // --- NEW: Calculate Actual Portfolio Performance over time ---
       // 1. Collect all unique tickers from trades
@@ -306,7 +324,9 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
         deleteTrade,
         isLoading,
         error,
-        refreshData
+        refreshData,
+        latestPricesMap,
+        stockMetadata
       }}
     >
       {children}

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.yuan.wealthwisebackend.mapper.StockInfoMapper">
+
+    <resultMap id="BaseResultMap" type="com.yuan.wealthwisebackend.model.entity.StockInfo">
+            <id property="id" column="id" jdbcType="BIGINT"/>
+            <result property="ticker" column="ticker" jdbcType="VARCHAR"/>
+            <result property="name" column="name" jdbcType="VARCHAR"/>
+            <result property="sector" column="sector" jdbcType="VARCHAR"/>
+            <result property="marketCap" column="market_cap" jdbcType="BIGINT"/>
+            <result property="createdAt" column="created_at" jdbcType="TIMESTAMP"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,ticker,name,
+        sector,market_cap,created_at
+    </sql>
+</mapper>

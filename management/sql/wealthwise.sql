@@ -2632,4 +2632,34 @@ END
 ;;
 delimiter ;
 
+-- ----------------------------
+-- Table structure for stock_info
+-- ----------------------------
+DROP TABLE IF EXISTS `stock_info`;
+CREATE TABLE `stock_info`  (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `ticker` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `sector` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL DEFAULT NULL,
+  `market_cap` bigint NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `ticker`(`ticker` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
+
+-- ----------------------------
+-- Records of stock_info
+-- ----------------------------
+INSERT INTO `stock_info` VALUES (1, 'AAPL', 'Apple Inc.', 'Technology', 3000000000000, '2026-04-01 20:15:00');
+INSERT INTO `stock_info` VALUES (2, 'TSLA', 'Tesla, Inc.', 'Automotive', 600000000000, '2026-04-01 20:15:00');
+INSERT INTO `stock_info` VALUES (3, 'MSFT', 'Microsoft Corporation', 'Technology', 2500000000000, '2026-04-01 20:15:00');
+INSERT INTO `stock_info` VALUES (4, 'NVDA', 'NVIDIA Corporation', 'Technology', 2000000000000, '2026-04-01 20:15:00');
+INSERT INTO `stock_info` VALUES (5, 'GOOGL', 'Alphabet Inc.', 'Communication Services', 1800000000000, '2026-04-01 20:15:00');
+INSERT INTO `stock_info` VALUES (6, 'AMZN', 'Amazon.com, Inc.', 'Consumer Cyclical', 1700000000000, '2026-04-01 20:15:00');
+INSERT INTO `stock_info` VALUES (7, 'META', 'Meta Platforms, Inc.', 'Communication Services', 1200000000000, '2026-04-01 20:15:00');
+INSERT INTO `stock_info` VALUES (8, 'NFLX', 'Netflix, Inc.', 'Communication Services', 260000000000, '2026-04-01 20:15:00');
+INSERT INTO `stock_info` VALUES (9, 'JPM', 'JPMorgan Chase & Co.', 'Financial', 570000000000, '2026-04-01 21:00:00');
+INSERT INTO `stock_info` VALUES (10, 'JNJ', 'Johnson & Johnson', 'Healthcare', 380000000000, '2026-04-01 21:00:00');
+INSERT INTO `stock_info` VALUES (11, 'AVGO', 'Broadcom Inc.', 'Technology', 620000000000, '2026-04-01 21:00:00');
+
 SET FOREIGN_KEY_CHECKS = 1;
