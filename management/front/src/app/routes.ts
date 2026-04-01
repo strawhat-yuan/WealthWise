@@ -4,13 +4,17 @@ import Dashboard from "./pages/Dashboard";
 import Holdings from "./pages/Holdings";
 import Transactions from "./pages/Transactions";
 import NotFound from "./pages/NotFound";
+import RoleSelection from "./pages/RoleSelection";
 
 export const router = createBrowserRouter([
   {
     path: "/",
+    Component: RoleSelection,
+  },
+  {
     Component: Layout,
     children: [
-      { index: true, Component: Dashboard },
+      { path: "dashboard", Component: Dashboard },
       { path: "holdings", Component: Holdings },
       { path: "transactions", Component: Transactions },
       { path: "*", Component: NotFound },

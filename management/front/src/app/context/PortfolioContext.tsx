@@ -24,9 +24,13 @@ interface PortfolioContextType {
   holdings: Holding[];
   performanceData: PerformanceData[];
   totalRealizedPnL: number;
-  addHolding: (holding: Omit<Holding, 'id'>) => void;
+  role: 'user' | 'admin';
+  isAdmin: boolean;
+  setRole: (role: 'user' | 'admin') => void;
+  addHolding: (holding: Omit<Holding, 'id'>, customTs?: string) => void;
   updateHolding: (id: string, holding: Omit<Holding, 'id'>) => void;
-  removeHolding: (id: string) => void;
+  removeHolding: (ticker: string) => Promise<boolean>;
+  deleteTrade: (id: number) => Promise<boolean>;
   isLoading: boolean;
   error: string | null;
   refreshData: () => void;
@@ -35,11 +39,21 @@ interface PortfolioContextType {
 const PortfolioContext = createContext<PortfolioContextType | undefined>(undefined);
 
 export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [role, setRoleState] = useState<'user' | 'admin'>(() => {
+    return (localStorage.getItem('wealthwise_role') as any) || 'user';
+  });
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [performanceData] = useState<PerformanceData[]>(generatePerformanceData());
   const [totalRealizedPnL, setTotalRealizedPnL] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const setRole = (newRole: 'user' | 'admin') => {
+    setRoleState(newRole);
+    localStorage.setItem('wealthwise_role', newRole);
+  };
+
+  const isAdmin = role === 'admin';
 
   const fetchData = async () => {
     try {
@@ -137,10 +151,11 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
     fetchData();
   };
 
-  const addHolding = async (holding: Omit<Holding, 'id'>) => {
+  const addHolding = async (holding: Omit<Holding, 'id'>, customTs?: string) => {
     try {
       const isBuy = holding.quantity > 0;
       const absQty = Math.abs(holding.quantity);
+      const tradeTime = customTs || new Date().toISOString();
 
       const res = await fetch('/api/stockholding', {
         method: 'POST',
@@ -158,7 +173,7 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
             price: holding.currentPrice,
             quantity: absQty,
             amount: holding.currentPrice * absQty,
-            ts: new Date().toISOString()
+            ts: tradeTime
           })
         });
         fetchData();
@@ -183,16 +198,49 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
     }
   };
 
-  const removeHolding = async (id: string) => {
+  const removeHolding = async (ticker: string) => {
+    console.log(`[Portfolio] Attempting to remove holding by Ticker: ${ticker}`);
     try {
-      const res = await fetch(`/api/stockholding/${id}`, {
+      const res = await fetch(`/api/stockholding/ticker/${ticker}`, {
         method: 'DELETE'
       });
       if (res.ok) {
-        fetchData();
+        console.log(`[Portfolio] Successfully removed holding: ${ticker}`);
+        await fetchData();
+        return true;
+      } else {
+        const errorText = await res.text();
+        console.error(`[Portfolio] Failed to remove holding: ${res.status}`, errorText);
+        alert(`删除持仓失败 (Ticker: ${ticker})\n服务器状态: ${res.status}\n详情: ${errorText || '无'}`);
+        return false;
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('[Portfolio] Error removing holding:', e);
+      alert(`网络错误: 无法删除记录 ${ticker}\n${e.message}`);
+      return false;
+    }
+  };
+
+  const deleteTrade = async (id: number) => {
+    console.log(`[Portfolio] Attempting to delete trade: ${id}`);
+    try {
+      const res = await fetch(`/api/stocktrade/${id}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        console.log(`[Portfolio] Successfully deleted trade: ${id}`);
+        await fetchData();
+        return true;
+      } else {
+        const errorText = await res.text();
+        console.error(`[Portfolio] Failed to delete trade: ${res.status}`, errorText);
+        alert(`删除交易记录失败 (#${id})\n服务器状态: ${res.status}\n详情: ${errorText || '无'}`);
+        return false;
+      }
+    } catch (e: any) {
+      console.error('[Portfolio] Error deleting trade:', e);
+      alert(`网络错误: 无法删除交易记录 ${id}\n${e.message}`);
+      return false;
     }
   };
 
@@ -202,9 +250,13 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
         holdings,
         performanceData,
         totalRealizedPnL,
+        role,
+        isAdmin,
+        setRole,
         addHolding,
         updateHolding,
         removeHolding,
+        deleteTrade,
         isLoading,
         error,
         refreshData

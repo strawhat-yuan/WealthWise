@@ -71,6 +71,18 @@ public class StockPriceController {
     }
 
     /**
+     * 根据股票代码和日期精准查询
+     */
+    @GetMapping("/detail")
+    public StockPrice getDetail(
+            @RequestParam String ticker,
+            @RequestParam String date) {
+        QueryWrapper<StockPrice> wrapper = new QueryWrapper<>();
+        wrapper.eq("ticker", ticker).eq("ts", date);
+        return stockPriceService.getOne(wrapper);
+    }
+
+    /**
      * 根据日期查询所有股票
      */
     @GetMapping("/date/{date}")

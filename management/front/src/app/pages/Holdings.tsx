@@ -16,17 +16,41 @@ import { Plus, Trash2, TrendingUp, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown
 import { HoldingsSkeleton } from '../components/HoldingsSkeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
+import { Input } from '../components/ui/input';
+import { Label } from '../components/ui/label';
 
 type SortField = 'ticker' | 'name' | 'value' | 'gainLoss' | null;
 type SortDirection = 'asc' | 'desc';
 
 export default function Holdings() {
-  const { holdings, removeHolding, addHolding, isLoading, error } = usePortfolio();
+  const { holdings, removeHolding, addHolding, isAdmin, isLoading, error } = usePortfolio();
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [availableStocks, setAvailableStocks] = useState<string[]>([]);
   const [latestPrices, setLatestPrices] = useState<Record<string, number>>({});
-  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [historicalPrices, setHistoricalPrices] = useState<Record<string, number>>({});
+  const [fetchingPrices, setFetchingPrices] = useState<Record<string, boolean>>({});
+
+  // Trade Modal State
+  const [isTradeDialogOpen, setIsTradeDialogOpen] = useState(false);
+  const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
+  const [selectedTradeTicker, setSelectedTradeTicker] = useState<string>('');
+  const [tradeQty, setTradeQty] = useState<string>('');
+  const [tradeDate, setTradeDate] = useState<string>('');
+
+  // Deletion state
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [tickerToDelete, setTickerToDelete] = useState<string | null>(null);
 
   // Chart state
   const [selectedChartTicker, setSelectedChartTicker] = useState<string | null>(null);
@@ -100,39 +124,81 @@ export default function Holdings() {
     );
   };
 
-  const handleTradeStock = (ticker: string, isBuy: boolean) => {
-    const qtyStr = quantities[ticker];
-    const qty = parseInt(qtyStr);
+  const handleOpenTradeDialog = (ticker: string, type: 'BUY' | 'SELL') => {
+    setSelectedTradeTicker(ticker);
+    setTradeType(type);
+    setTradeQty('');
+    const now = new Date();
+    const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    setTradeDate(localNow);
+    setIsTradeDialogOpen(true);
+    
+    // Trigger price fetch for current date automatically
+    handleDateChange(ticker, localNow);
+  };
+
+  const handleConfirmTrade = async () => {
+    const qty = parseInt(tradeQty);
     if (!qty || qty <= 0) {
-       alert("Please enter a valid positive quantity");
+       alert("Please enter a valid quantity.");
        return;
     }
-    const currentPrice = latestPrices[ticker] || 100;
+
+    const ticker = selectedTradeTicker;
+    const isBuy = tradeType === 'BUY';
+    const dateOnly = tradeDate.split('T')[0];
     
-    // For Sell, if we don't own enough, maybe alert?
+    // Use cached historical price or latest price
+    let executionPrice = historicalPrices[`${ticker}_${dateOnly}`] || latestPrices[ticker] || 100;
+
+    const tradeTs = new Date(tradeDate).toISOString();
+    
     if (!isBuy) {
         const owned = holdings.find(h => h.ticker === ticker)?.quantity || 0;
         if (qty > owned) {
-            alert(`You cannot sell ${qty} shares. You only own ${owned} shares of ${ticker}.`);
+            alert(`Sell failed: You only own ${owned} shares of ${ticker}.`);
             return;
         }
     }
 
-    addHolding({
+    await addHolding({
       ticker,
       name: ticker + " Stock",
       type: "stock",
       quantity: isBuy ? qty : -qty,
-      currentPrice: currentPrice, 
-      purchasePrice: currentPrice,
+      currentPrice: executionPrice, 
+      purchasePrice: executionPrice,
       realizedPnL: 0,
-      purchaseDate: new Date().toISOString()
-    });
-    setQuantities(prev => ({ ...prev, [ticker]: '' }));
+      purchaseDate: dateOnly
+    }, tradeTs);
+    
+    setIsTradeDialogOpen(false);
   };
 
-  const handleQuantityChange = (ticker: string, value: string) => {
-    setQuantities(prev => ({ ...prev, [ticker]: value }));
+  const handleDateChange = async (ticker: string, value: string) => {
+    setTradeDate(value);
+    
+    if (value) {
+      const dateOnly = value.split('T')[0];
+      const cacheKey = `${ticker}_${dateOnly}`;
+      
+      if (historicalPrices[cacheKey] || fetchingPrices[cacheKey]) return;
+
+      setFetchingPrices(prev => ({ ...prev, [cacheKey]: true }));
+      try {
+        const res = await fetch(`/api/stockprice/detail?ticker=${ticker}&date=${dateOnly}`);
+        if (res.ok) {
+          const detail = await res.json();
+          if (detail && detail.close) {
+            setHistoricalPrices(prev => ({ ...prev, [cacheKey]: detail.close }));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch historical price:', err);
+      } finally {
+        setFetchingPrices(prev => ({ ...prev, [cacheKey]: false }));
+      }
+    }
   };
 
   const handleTickerClick = async (ticker: string) => {
@@ -176,6 +242,14 @@ export default function Holdings() {
     }
   };
 
+  const confirmDeleteHolding = async () => {
+    if (tickerToDelete) {
+      await removeHolding(tickerToDelete);
+      setTickerToDelete(null);
+      setIsDeleteDialogOpen(false);
+    }
+  };
+
   const getAssetTypeBadgeColor = (type: string) => {
     switch (type) {
       case 'stock': return 'bg-blue-100 text-blue-800';
@@ -188,7 +262,6 @@ export default function Holdings() {
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
-      // Find the main close price payload (it might be index 0 or 1 depending on hover overlap)
       const p = payload[0].payload;
       return (
         <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
@@ -208,7 +281,24 @@ export default function Holdings() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this holding?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove all records for <strong>{tickerToDelete}</strong>. Historical trade records will not be deleted from the ledger.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteHolding} className="bg-red-600 hover:bg-red-700">
+              Confirm Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-bold text-3xl">Holdings</h2>
@@ -243,12 +333,13 @@ export default function Holdings() {
                   </TableHead>
                   <TableHead className="text-right">Realized P&L</TableHead>
                   <TableHead className="text-right">Action</TableHead>
+                  {isAdmin && <TableHead className="text-center">Admin</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {sortedHoldings.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={isAdmin ? 11 : 10} className="text-center py-8 text-gray-500">
                       No holdings found. Pick a stock from below to get started.
                     </TableCell>
                   </TableRow>
@@ -290,32 +381,39 @@ export default function Holdings() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <input
-                              type="number"
-                              placeholder="Qty"
-                              min="1"
-                              value={quantities[holding.ticker] || ''}
-                              onChange={(e) => handleQuantityChange(holding.ticker, e.target.value)}
-                              className="w-16 px-2 py-1 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                            <Button
-                              size="sm"
-                              onClick={() => handleTradeStock(holding.ticker, true)}
-                              className="bg-green-600 hover:bg-green-700 h-8 px-2"
-                            >
-                              Buy
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => handleTradeStock(holding.ticker, false)}
-                              className="h-8 px-2"
-                              disabled={holding.quantity <= 0}
-                            >
-                              Sell
-                            </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleOpenTradeDialog(holding.ticker, 'BUY')}
+                                className="bg-green-600 hover:bg-green-700 h-8 px-4"
+                              >
+                                Buy
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => handleOpenTradeDialog(holding.ticker, 'SELL')}
+                                className="h-8 px-4"
+                                disabled={holding.quantity <= 0}
+                              >
+                                Sell
+                              </Button>
                           </div>
                         </TableCell>
+                        {isAdmin && (
+                           <TableCell className="text-center">
+                             <Button
+                               variant="ghost"
+                               size="sm"
+                               onClick={() => {
+                                 setTickerToDelete(holding.ticker);
+                                 setIsDeleteDialogOpen(true);
+                               }}
+                               className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                             >
+                               <Trash2 className="h-4 w-4" />
+                             </Button>
+                           </TableCell>
+                         )}
                       </TableRow>
                     );
                   })
@@ -326,7 +424,6 @@ export default function Holdings() {
         </CardContent>
       </Card>
 
-      {/* NEW: Stock List for adding/selling holdings */}
       <Card>
         <CardHeader>
           <CardTitle>Available Stocks Market</CardTitle>
@@ -339,7 +436,6 @@ export default function Holdings() {
                   <TableHead>Ticker</TableHead>
                   <TableHead className="text-right">Current Price</TableHead>
                   <TableHead className="text-right">Quantity</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -357,44 +453,22 @@ export default function Holdings() {
                       {formatCurrency(latestPrices[ticker] || 0)}
                     </TableCell>
                     <TableCell className="text-right">
-                      <div className="flex justify-end">
-                        <input
-                          type="number"
-                          placeholder="e.g. 10"
-                          min="1"
-                          value={quantities[ticker] || ''}
-                          onChange={(e) => handleQuantityChange(ticker, e.target.value)}
-                          className="w-24 px-2 py-1 text-sm border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end">
-                        <Button
-                          size="sm"
-                          onClick={() => handleTradeStock(ticker, true)}
-                          className="bg-green-600 hover:bg-green-700"
-                        >
-                          Buy
-                        </Button>
-                      </div>
+                       <Button
+                         size="sm"
+                         onClick={() => handleOpenTradeDialog(ticker, 'BUY')}
+                         className="bg-green-600 hover:bg-green-700"
+                       >
+                         Buy
+                       </Button>
                     </TableCell>
                   </TableRow>
                 ))}
-                {availableStocks.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-4 text-gray-500">
-                      No stocks available in the market database.
-                    </TableCell>
-                  </TableRow>
-                )}
               </TableBody>
             </Table>
           </div>
         </CardContent>
       </Card>
 
-      {/* Chart Dialog */}
       <Dialog open={isChartOpen} onOpenChange={setIsChartOpen}>
         <DialogContent className="sm:max-w-[700px]">
           <DialogHeader>
@@ -439,6 +513,79 @@ export default function Holdings() {
                 No history data available.
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Trade Transaction Dialog */}
+      <Dialog open={isTradeDialogOpen} onOpenChange={setIsTradeDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle className="flex justify-between items-center text-xl">
+              <span>{tradeType} {selectedTradeTicker}</span>
+              <Badge className={tradeType === 'BUY' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}>
+                {tradeType}
+              </Badge>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="qty" className="text-right">Quantity</Label>
+              <Input
+                id="qty"
+                type="number"
+                min="1"
+                placeholder="0"
+                value={tradeQty}
+                onChange={(e) => setTradeQty(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="date" className="text-right">Date</Label>
+              <Input
+                id="date"
+                type="datetime-local"
+                value={tradeDate}
+                onChange={(e) => handleDateChange(selectedTradeTicker, e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+            
+            <div className="bg-gray-50 p-4 rounded-lg space-y-2 border border-gray-100 mt-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Closing Price ({tradeDate.split('T')[0]})</span>
+                <span className="font-medium">
+                  {fetchingPrices[`${selectedTradeTicker}_${tradeDate.split('T')[0]}`] ? (
+                    <span className="text-blue-500 animate-pulse">Fetching...</span>
+                  ) : historicalPrices[`${selectedTradeTicker}_${tradeDate.split('T')[0]}`] ? (
+                    formatCurrency(historicalPrices[`${selectedTradeTicker}_${tradeDate.split('T')[0]}`])
+                  ) : (
+                    <span className="text-amber-600">N/A (Using Latest: {formatCurrency(latestPrices[selectedTradeTicker] || 0)})</span>
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
+                <span>Total Amount</span>
+                <span className="text-blue-600">
+                   {(() => {
+                      const price = historicalPrices[`${selectedTradeTicker}_${tradeDate.split('T')[0]}`] || latestPrices[selectedTradeTicker] || 0;
+                      const qty = parseInt(tradeQty) || 0;
+                      return formatCurrency(price * qty);
+                   })()}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-4">
+            <Button variant="outline" onClick={() => setIsTradeDialogOpen(false)}>Cancel</Button>
+            <Button 
+                className={tradeType === 'BUY' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'} 
+                onClick={handleConfirmTrade}
+                disabled={!tradeQty || parseInt(tradeQty) <= 0}
+            >
+              Confirm {tradeType}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

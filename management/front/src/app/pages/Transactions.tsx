@@ -1,9 +1,21 @@
 import { useState, useEffect } from 'react';
+import { usePortfolio } from '../context/PortfolioContext';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
+import { Button } from '../components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
 import { formatCurrency } from '../utils/portfolioUtils';
-import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Trash2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
 
 interface TradeRecord {
   id: number;
@@ -16,9 +28,14 @@ interface TradeRecord {
 }
 
 export default function Transactions() {
+  const { isAdmin, deleteTrade } = usePortfolio();
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Deletion state
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [tradeToDelete, setTradeToDelete] = useState<TradeRecord | null>(null);
 
   useEffect(() => {
     fetch('/api/stocktrade/list')
@@ -41,8 +58,36 @@ export default function Transactions() {
     return new Date(dateString).toLocaleString();
   };
 
+  const confirmDeleteTrade = async () => {
+    if (tradeToDelete) {
+      const success = await deleteTrade(tradeToDelete.id);
+      if (success) {
+        setTrades(prev => prev.filter(t => t.id !== tradeToDelete.id));
+        setTradeToDelete(null);
+        setIsDeleteDialogOpen(false);
+      }
+    }
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-in fade-in duration-500">
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除交易记录？</AlertDialogTitle>
+            <AlertDialogDescription>
+              您确定要删除这笔 <strong>{tradeToDelete?.ticker}</strong> 的交易记录 (#{tradeToDelete?.id}) 吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteTrade} className="bg-red-600 hover:bg-red-700">
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-bold text-3xl">Transactions</h2>
@@ -79,6 +124,7 @@ export default function Transactions() {
                     <TableHead className="text-right">Quantity</TableHead>
                     <TableHead className="text-right">Executed Price</TableHead>
                     <TableHead className="text-right">Total Amount</TableHead>
+                    {isAdmin && <TableHead className="text-center">Action</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -110,6 +156,21 @@ export default function Transactions() {
                       <TableCell className="text-right font-semibold">
                         {formatCurrency(trade.amount)}
                       </TableCell>
+                      {isAdmin && (
+                        <TableCell className="text-center">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                             onClick={() => {
+                               setTradeToDelete(trade);
+                               setIsDeleteDialogOpen(true);
+                             }}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
