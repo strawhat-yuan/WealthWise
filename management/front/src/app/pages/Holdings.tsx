@@ -55,6 +55,8 @@ export default function Holdings() {
   // Deletion state
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [tickerToDelete, setTickerToDelete] = useState<string | null>(null);
+  const [isValidationErrorOpen, setIsValidationErrorOpen] = useState(false);
+  const [validationErrorMsg, setValidationErrorMsg] = useState('');
 
   // Chart state
   const [selectedChartTicker, setSelectedChartTicker] = useState<string | null>(null);
@@ -222,7 +224,8 @@ export default function Holdings() {
     if (!isBuy) {
         const owned = holdings.find(h => h.ticker === ticker)?.quantity || 0;
         if (qty > owned) {
-            alert(`Sell failed: You only own ${owned} shares of ${ticker}.`);
+            setValidationErrorMsg(`Transaction Failed: You are trying to sell ${qty} shares of ${ticker}, but you only own ${owned} shares in your active portfolio.`);
+            setIsValidationErrorOpen(true);
             return;
         }
     }
@@ -925,7 +928,14 @@ export default function Holdings() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="qty" className="text-right">Quantity</Label>
+              <div className="text-right flex flex-col justify-center">
+                <Label htmlFor="qty" className="text-sm font-semibold">Quantity</Label>
+                {tradeType === 'SELL' && (
+                  <span className="text-[10px] text-blue-600 font-bold">
+                    Own: {holdings.find(h => h.ticker === selectedTradeTicker)?.quantity || 0}
+                  </span>
+                )}
+              </div>
               <Input
                 id="qty"
                 type="number"
@@ -933,7 +943,7 @@ export default function Holdings() {
                 placeholder="0"
                 value={tradeQty}
                 onChange={(e) => setTradeQty(e.target.value)}
-                className="col-span-3"
+                className="col-span-3 font-mono"
               />
             </div>
             <div className="grid grid-cols-4 items-start gap-4">
@@ -1013,6 +1023,31 @@ export default function Holdings() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Validation Error Dialog */}
+      <AlertDialog open={isValidationErrorOpen} onOpenChange={setIsValidationErrorOpen}>
+        <AlertDialogContent className="border-red-100 bg-white">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                <TrendingDown className="w-6 h-6 text-red-600" />
+              </div>
+              <AlertDialogTitle className="text-red-700 text-xl font-black">Insufficient Shares</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription className="text-gray-600 font-medium py-2 px-1">
+              {validationErrorMsg}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-4">
+            <AlertDialogAction 
+              onClick={() => setIsValidationErrorOpen(false)}
+              className="bg-red-600 hover:bg-red-700 text-white font-bold h-11 px-8 rounded-xl shadow-lg shadow-red-200 transition-all active:scale-95"
+            >
+              Understand & Adjust
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
