@@ -7,6 +7,7 @@ C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yu
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\mapper\StockHoldingMapper.java
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\mapper\StockInfoMapper.java
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\mapper\StockPriceMapper.java
+C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\mapper\StockRealizedSummaryMapper.java
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\mapper\StockTradeMapper.java
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\model\dto\MarketDataDTO.java
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\model\dto\StockPositionDTO.java
@@ -16,6 +17,7 @@ C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yu
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\model\entity\StockInfo.java
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\model\entity\StockPrice.java
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\model\entity\StockPriceResponse.java
+C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\model\entity\StockRealizedSummary.java
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\model\entity\StockTrade.java
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\service\impl\StockHoldingServiceImpl.java
 C:\Users\49282\Desktop\github\WealthWise\management\backend\src\main\java\com\yuan\wealthwisebackend\service\impl\StockInfoServiceImpl.java

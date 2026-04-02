@@ -10,7 +10,7 @@ import { DashboardSkeleton } from '../components/DashboardSkeleton';
 type TimeRange = '1M' | '3M' | '6M' | 'YTD' | 'ALL';
 
 export default function Dashboard() {
-  const { holdings, performanceData, totalRealizedPnL, isLoading, error } = usePortfolio();
+  const { holdings, performanceData, trades, totalRealizedPnL, isLoading, error } = usePortfolio();
   const stats = calculatePortfolioStats(holdings);
   const [timeRange, setTimeRange] = useState<TimeRange>('3M');
   const [allocationTab, setAllocationTab] = useState<'ticker' | 'sector'>('ticker');
@@ -81,6 +81,38 @@ export default function Dashboard() {
     ];
   };
 
+  // Enhance chart data with trade markers
+  const chartDataWithTrades = filteredPerformanceData.map(d => {
+    const dayTrades = trades.filter(t => {
+      if (!t.ts) return false;
+      const tStr = typeof t.ts === 'string' ? t.ts : new Date(t.ts).toISOString();
+      return tStr.split('T')[0] === d.date;
+    });
+    return {
+      ...d,
+      dayTrades: dayTrades,
+      hasTrade: dayTrades.length > 0
+    };
+  });
+
+  const renderTradeDot = (props: any) => {
+    const { cx, cy, payload } = props;
+    if (payload.hasTrade) {
+      return (
+        <circle 
+          key={`dot-${payload.date}`}
+          cx={cx} 
+          cy={cy} 
+          r={4} 
+          fill="#3b82f6" 
+          stroke="#fff" 
+          strokeWidth={2} 
+        />
+      );
+    }
+    return <circle r={0} />;
+  };
+
 
   // Prepare data for pie chart (by holding)
   const topHoldingsData = holdings
@@ -139,8 +171,8 @@ export default function Dashboard() {
             <DollarSign className="w-4 h-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="font-bold text-2xl">{formatCurrency(stats.totalValue)}</div>
-            <p className="text-xs text-gray-500 mt-1">
+            <div className="font-bold text-2xl tabular-nums tracking-tight">{formatCurrency(stats.totalValue)}</div>
+            <p className="text-xs text-gray-500 mt-1 tabular-nums">
               Cost: {formatCurrency(stats.totalCost)}
             </p>
           </CardContent>
@@ -148,7 +180,7 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Total Gain/Loss</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Total Gain</CardTitle>
             {stats.totalGainLoss >= 0 ? (
               <TrendingUp className="w-4 h-4 text-green-500" />
             ) : (
@@ -156,10 +188,10 @@ export default function Dashboard() {
             )}
           </CardHeader>
           <CardContent>
-            <div className={`font-bold text-2xl ${stats.totalGainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <div className={`font-bold text-2xl tabular-nums tracking-tight ${stats.totalGainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatCurrency(stats.totalGainLoss)}
             </div>
-            <p className={`text-xs mt-1 ${stats.totalGainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <p className={`text-xs mt-1 tabular-nums ${stats.totalGainLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatPercent(stats.totalGainLossPercent)}
             </p>
           </CardContent>
@@ -167,7 +199,7 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Daily P&L</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Total Daily P&L</CardTitle>
             {(() => {
               const totalDailyPnL = holdings.reduce((sum, h) => {
                 const value = h.quantity * h.currentPrice;
@@ -191,7 +223,7 @@ export default function Dashboard() {
                 return sum + dailyPnL;
               }, 0);
               return (
-                <div className={`font-bold text-2xl ${totalDailyPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`font-bold text-2xl tabular-nums tracking-tight ${totalDailyPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {formatCurrency(totalDailyPnL)}
                 </div>
               );
@@ -204,7 +236,7 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Realized P&L</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Total Realized P&L</CardTitle>
             {totalRealizedPnL >= 0 ? (
               <TrendingUp className="w-4 h-4 text-green-500" />
             ) : (
@@ -212,7 +244,7 @@ export default function Dashboard() {
             )}
           </CardHeader>
           <CardContent>
-            <div className={`font-bold text-2xl ${totalRealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <div className={`font-bold text-2xl tabular-nums tracking-tight ${totalRealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {formatCurrency(totalRealizedPnL)}
             </div>
             <p className="text-xs text-gray-500 mt-1">Total closed profit</p>
@@ -242,7 +274,7 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={filteredPerformanceData}>
+              <LineChart data={chartDataWithTrades}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis
                   dataKey="date"
@@ -259,10 +291,33 @@ export default function Dashboard() {
                   domain={getYAxisDomain()}
                 />
                 <Tooltip
-                  formatter={(value: number) => [formatCurrency(value), 'Value']}
-                  labelFormatter={(label) => new Date(label).toLocaleDateString()}
+                  formatter={(value: number, name: string, props: any) => {
+                    if (name === 'Value') {
+                      return [formatCurrency(value), 'Total Value'];
+                    }
+                    return [value, name];
+                  }}
+                  labelFormatter={(label, payload) => {
+                    const dateStr = new Date(label).toLocaleDateString();
+                    const dayData = payload?.[0]?.payload;
+                    if (dayData?.hasTrade) {
+                      const tradeSummary = dayData.dayTrades.map((t: any) => 
+                        `${t.tradeType} ${t.quantity} ${t.ticker}`
+                      ).join(', ');
+                      return `${dateStr} (${tradeSummary})`;
+                    }
+                    return dateStr;
+                  }}
                 />
-                <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                <Line 
+                  type="monotone" 
+                  dataKey="value" 
+                  name="Value"
+                  stroke="#3b82f6" 
+                  strokeWidth={2} 
+                  dot={renderTradeDot}
+                  activeDot={{ r: 6 }}
+                />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>

@@ -2,11 +2,13 @@ com\yuan\wealthwisebackend\model\entity\StockPrice.class
 com\yuan\wealthwisebackend\control\StockInfoController.class
 com\yuan\wealthwisebackend\control\StockTradeController.class
 com\yuan\wealthwisebackend\control\StockController.class
+com\yuan\wealthwisebackend\model\entity\StockRealizedSummary.class
 com\yuan\wealthwisebackend\mapper\StockPriceMapper.class
 com\yuan\wealthwisebackend\control\StockPriceController.class
 com\yuan\wealthwisebackend\mapper\StockTradeMapper.class
 com\yuan\wealthwisebackend\model\entity\StockTrade.class
 com\yuan\wealthwisebackend\model\dto\StockPriceData.class
+com\yuan\wealthwisebackend\mapper\StockRealizedSummaryMapper.class
 com\yuan\wealthwisebackend\service\impl\StockHoldingServiceImpl.class
 com\yuan\wealthwisebackend\service\StockPriceService.class
 com\yuan\wealthwisebackend\WealthWiseBackendApplication.class

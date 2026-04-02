@@ -13,7 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
 import { Badge } from '../components/ui/badge';
-import { Plus, Minus, Trash2, TrendingUp, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Minus, Trash2, TrendingUp, TrendingDown, ArrowUpDown, ArrowUp, ArrowDown, Calendar, Clock, Loader2, Check } from 'lucide-react';
 import { HoldingsSkeleton } from '../components/HoldingsSkeleton';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -35,7 +35,7 @@ type MarketSortField = 'ticker' | 'name' | 'sector' | 'marketCap' | 'price' | 'c
 type SortDirection = 'asc' | 'desc';
 
 export default function Holdings() {
-  const { holdings, closedHoldings, removeHolding, addHolding, isAdmin, isLoading, error, latestPricesMap, stockMetadata } = usePortfolio();
+  const { holdings, closedHoldings, trades, removeHolding, removeRealizedProfit, addHolding, isAdmin, isLoading, error, latestPricesMap, stockMetadata } = usePortfolio();
   const [sortField, setSortField] = useState<SortField>(null);
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [activeTab, setActiveTab] = useState<'active' | 'closed'>('active');
@@ -319,7 +319,11 @@ export default function Holdings() {
 
   const confirmDeleteHolding = async () => {
     if (tickerToDelete) {
-      await removeHolding(tickerToDelete);
+      if (activeTab === 'closed') {
+        await removeRealizedProfit(tickerToDelete);
+      } else {
+        await removeHolding(tickerToDelete);
+      }
       setTickerToDelete(null);
       setIsDeleteDialogOpen(false);
     }
@@ -414,7 +418,7 @@ export default function Holdings() {
               onClick={() => setActiveTab('closed')}
               className="px-4 h-8 text-xs font-bold transition-all"
             >
-              Closed Positions ({closedHoldings.length})
+              Realized Profits ({closedHoldings.length})
             </Button>
           </div>
         </CardHeader>
@@ -447,8 +451,8 @@ export default function Holdings() {
                   <TableHead className="text-right cursor-pointer group" onClick={() => handleSort('dailyPnL')}>
                     <div className="flex items-center justify-end">Daily P&L{getSortIcon('dailyPnL')}</div>
                   </TableHead>
-                  <TableHead className="text-right text-center">Action</TableHead>
-                  {isAdmin && <TableHead className="text-center">Admin</TableHead>}
+                  <TableHead className="text-center font-bold">Action</TableHead>
+                  {isAdmin && <TableHead className="text-center font-bold">Admin</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -478,11 +482,11 @@ export default function Holdings() {
                           </button>
                         </TableCell>
                         <TableCell className="text-sm text-gray-500">{holding.name}</TableCell>
-                        <TableCell className="text-right font-mono">{holding.quantity.toLocaleString()}</TableCell>
-                        <TableCell className={`text-right font-bold ${(holding.changePercent || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        <TableCell className="text-right tabular-nums font-medium text-gray-700">{holding.quantity.toLocaleString()}</TableCell>
+                        <TableCell className={`text-right tabular-nums font-bold ${(holding.changePercent || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {formatCurrency(holding.currentPrice)}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right tabular-nums">
                           <div className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
                             (holding.changePercent || 0) >= 0 
                               ? 'bg-green-100 text-green-700' 
@@ -491,17 +495,17 @@ export default function Holdings() {
                             {formatPercent(holding.changePercent || 0)}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right font-bold text-gray-900">{formatCurrency(value)}</TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right tabular-nums font-bold text-gray-900">{formatCurrency(value)}</TableCell>
+                        <TableCell className="text-right tabular-nums">
                           {holding.type === 'cash' ? (
                             <span className="text-gray-400">—</span>
                           ) : (
                             <div className={gainLoss >= 0 ? 'text-green-600' : 'text-red-600'}>
-                              <div className="flex items-center justify-end gap-1">
+                              <div className="flex items-center justify-end gap-1 tabular-nums">
                                 {gainLoss >= 0 ? <Plus className="w-2 h-2" /> : <Minus className="w-2 h-2" />}
                                 <span className="font-bold">{formatCurrency(Math.abs(gainLoss))}</span>
                               </div>
-                              <div className="text-[10px] opacity-80">{formatPercent(gainLossPercent)}</div>
+                              <div className="text-[10px] opacity-80 tabular-nums">{formatPercent(gainLossPercent)}</div>
                             </div>
                           )}
                         </TableCell>
@@ -510,7 +514,7 @@ export default function Holdings() {
                             const chg = holding.changePercent || 0;
                             const dailyPnL = value * (chg / (100 + chg));
                             return (
-                               <div className={`${dailyPnL >= 0 ? 'text-green-600' : 'text-red-600'} font-medium`}>
+                               <div className={`${dailyPnL >= 0 ? 'text-green-600' : 'text-red-600'} font-medium tabular-nums`}>
                                  <div className="flex items-center justify-end gap-0.5">
                                    {dailyPnL >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                                    <span>{formatCurrency(Math.abs(dailyPnL))}</span>
@@ -519,12 +523,12 @@ export default function Holdings() {
                             );
                           })()}
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-2 px-4">
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-2">
                               <Button
                                 size="sm"
                                 onClick={() => handleOpenTradeDialog(holding.ticker, 'BUY')}
-                                className="bg-green-600 hover:bg-green-700 h-8 px-4"
+                                className="bg-green-600 hover:bg-green-700 h-8 px-4 font-bold"
                               >
                                 Buy
                               </Button>
@@ -532,7 +536,7 @@ export default function Holdings() {
                                 size="sm"
                                 variant="destructive"
                                 onClick={() => handleOpenTradeDialog(holding.ticker, 'SELL')}
-                                className="h-8 px-4"
+                                className="h-8 px-4 font-bold"
                                 disabled={holding.quantity <= 0}
                               >
                                 Sell
@@ -620,18 +624,20 @@ export default function Holdings() {
                           {meta.sector || 'Others'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right text-gray-500">
+                      <TableCell className="text-right tabular-nums text-gray-600 font-medium">
                         {formatMarketCap(meta.marketCap)}
                       </TableCell>
-                      <TableCell className={`text-right font-bold ${
+                      <TableCell className={`text-right tabular-nums font-bold ${
                         (change || 0) >= 0 ? 'text-green-600' : 'text-red-600'
                       }`}>
                         {formatCurrency(price || 0)}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <span className={`text-xs font-bold ${(change || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      <TableCell className="text-right tabular-nums">
+                        <div className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
+                          (change || 0) >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
                           {formatPercent(change || 0)}
-                        </span>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -704,6 +710,42 @@ export default function Holdings() {
             );
           })()}
 
+          {/* Helper for rendering trade dots in ticker chart */}
+          {(() => {
+            const renderTickerTradeDot = (props: any) => {
+               const { cx, cy, payload } = props;
+               const dateStr = new Date(payload.ts).toISOString().split('T')[0];
+               const tickerTrades = trades.filter(t => {
+                  if (!t || !t.ts) return false;
+                  const tStr = typeof t.ts === 'string' ? t.ts : new Date(t.ts).toISOString();
+                  return t.ticker === selectedChartTicker && tStr.split('T')[0] === dateStr;
+               });
+               
+               if (tickerTrades.length > 0) {
+                 // Sort such that SELL is prioritized or show both if needed. For now, show SELL if present.
+                 const hasSell = tickerTrades.some(t => t.tradeType?.toUpperCase() === 'SELL');
+                 const hasBuy = tickerTrades.some(t => t.tradeType?.toUpperCase() === 'BUY');
+                 
+                 const color = hasSell ? '#ef4444' : '#10b981';
+                 const label = hasSell && hasBuy ? 'B/S' : (hasSell ? 'S' : 'B');
+
+                 return (
+                   <g key={`ticker-dot-${payload.ts}`}>
+                     <circle cx={cx} cy={cy} r={7} fill={color} stroke="#fff" strokeWidth={2} />
+                     <text x={cx} y={cy + 3} textAnchor="middle" fill="#fff" fontSize={hasSell && hasBuy ? "6" : "8"} fontWeight="bold">
+                       {label}
+                     </text>
+                   </g>
+                 );
+               }
+               return <circle r={0} />;
+            };
+
+            // Inject the function to be used by Line below
+            (window as any)._renderTickerTradeDot = renderTickerTradeDot;
+            return null;
+          })()}
+
           <div className="h-[350px] w-full mt-6 bg-gray-50/50 rounded-xl p-2 border border-dashed border-gray-200">
             {isChartLoading ? (
               <div className="flex h-full items-center justify-center text-gray-500">
@@ -731,13 +773,12 @@ export default function Holdings() {
                     axisLine={false}
                   />
                   <Tooltip content={<CustomTooltip />} />
-                  <Line type="monotone" dataKey="close" stroke="#3b82f6" dot={false} strokeWidth={3} />
                   <Line 
                     type="monotone" 
-                    dataKey="buyEventPrice" 
-                    stroke="none" 
-                    dot={{ r: 6, fill: '#f59e0b', stroke: '#fff', strokeWidth: 2 }} 
-                    isAnimationActive={false} 
+                    dataKey="close" 
+                    stroke="#3b82f6" 
+                    dot={(window as any)._renderTickerTradeDot} 
+                    strokeWidth={3} 
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -774,22 +815,74 @@ export default function Holdings() {
                       className="bg-white border-blue-100"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="date-dialog" className="text-sm font-semibold">Trade Date</Label>
-                    <Input
-                      id="date-dialog"
-                      type="datetime-local"
-                      value={tradeDate}
-                      onChange={(e) => handleDateChange(selectedChartTicker, e.target.value)}
-                      className="bg-white border-blue-100"
-                    />
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="date-dialog" className="text-sm font-bold flex items-center gap-2 text-gray-700">
+                        <Calendar className="w-4 h-4 text-blue-500" />
+                        Trade Date & Time
+                      </Label>
+                      {(() => {
+                        const dateOnly = tradeDate.split('T')[0];
+                        const isFetching = fetchingPrices[`${selectedChartTicker}_${dateOnly}`];
+                        const hasPrice = historicalPrices[`${selectedChartTicker}_${dateOnly}`];
+                        
+                        return (
+                          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider">
+                            {isFetching ? (
+                              <span className="text-blue-600 flex items-center animate-pulse">
+                                <Loader2 className="w-3 h-3 mr-1 animate-spin" /> Fetching Price
+                              </span>
+                            ) : hasPrice ? (
+                              <span className="text-green-600 flex items-center">
+                                <Check className="w-3 h-3 mr-1" /> Price Synced
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Custom Date</span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    
+                    <div className="flex flex-col gap-2">
+                       <Input
+                         id="date-dialog"
+                         type="datetime-local"
+                         value={tradeDate}
+                         onChange={(e) => handleDateChange(selectedChartTicker || '', e.target.value)}
+                         className="bg-white border-blue-100 h-10 shadow-sm focus:ring-2 focus:ring-blue-100 transition-all font-mono text-sm"
+                       />
+                       
+                       <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { label: 'Today', days: 0 },
+                            { label: 'Yesterday', days: 1 },
+                            { label: '1y Ago', days: 365 }
+                          ].map((preset) => (
+                            <Button
+                              key={preset.label}
+                              variant="outline"
+                              size="sm"
+                              className="h-8 text-[10px] font-bold border-blue-50 hover:bg-blue-50 text-blue-600 bg-blue-50/20"
+                              onClick={() => {
+                                const d = new Date();
+                                d.setDate(d.getDate() - preset.days);
+                                const localVal = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                                handleDateChange(selectedChartTicker || '', localVal);
+                              }}
+                            >
+                              {preset.label}
+                            </Button>
+                          ))}
+                       </div>
+                    </div>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-blue-100 shadow-sm mt-2">
                    <div className="flex flex-col">
-                     <span className="text-xs text-gray-500 uppercase font-bold tracking-tight">Estimated Total</span>
-                     <span className="text-2xl font-black text-blue-700">
+                     <span className="text-xs text-gray-400 uppercase font-bold tracking-wider mb-0.5">Estimated Total</span>
+                     <span className="text-3xl font-black text-blue-700 tabular-nums tracking-tight">
                         {(() => {
                            const marketData = latestPricesMap[selectedChartTicker];
                            const latestPrice = marketData && typeof marketData === 'object' ? marketData.price : marketData;
@@ -843,15 +936,42 @@ export default function Holdings() {
                 className="col-span-3"
               />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="date" className="text-right">Date</Label>
-              <Input
-                id="date"
-                type="datetime-local"
-                value={tradeDate}
-                onChange={(e) => handleDateChange(selectedTradeTicker, e.target.value)}
-                className="col-span-3"
-              />
+            <div className="grid grid-cols-4 items-start gap-4">
+              <Label htmlFor="date" className="text-right pt-2 font-bold flex items-center justify-end gap-1">
+                <Calendar className="w-3 h-3 text-blue-500" /> Date
+              </Label>
+              <div className="col-span-3 space-y-2">
+                <Input
+                  id="date"
+                  type="datetime-local"
+                  value={tradeDate}
+                  onChange={(e) => handleDateChange(selectedTradeTicker || '', e.target.value)}
+                  className="bg-white border-blue-100 h-9 shadow-sm focus:ring-2 focus:ring-blue-100 transition-all font-mono text-xs"
+                />
+                
+                <div className="flex gap-2">
+                   {[
+                     { label: 'Today', days: 0 },
+                     { label: 'Yesterday', days: 1 },
+                     { label: '1y Ago', days: 365 }
+                   ].map((preset) => (
+                     <Button
+                       key={preset.label}
+                       variant="outline"
+                       size="sm"
+                       className="h-6 text-[9px] px-2 font-bold border-blue-50 hover:bg-blue-50 text-blue-600 bg-blue-50/20"
+                       onClick={() => {
+                         const d = new Date();
+                         d.setDate(d.getDate() - preset.days);
+                         const localVal = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                         handleDateChange(selectedTradeTicker || '', localVal);
+                       }}
+                     >
+                       {preset.label}
+                     </Button>
+                   ))}
+                </div>
+              </div>
             </div>
             
             <div className="bg-gray-50 p-4 rounded-lg space-y-2 border border-gray-100 mt-2">
@@ -863,13 +983,13 @@ export default function Holdings() {
                   ) : historicalPrices[`${selectedTradeTicker}_${tradeDate.split('T')[0]}`] ? (
                     formatCurrency(historicalPrices[`${selectedTradeTicker}_${tradeDate.split('T')[0]}`])
                   ) : (
-                    <span className="text-amber-600">N/A (Using Latest: {formatCurrency(latestPricesMap[selectedTradeTicker] || 0)})</span>
+                    <span>{formatCurrency(typeof latestPricesMap[selectedTradeTicker] === 'object' ? latestPricesMap[selectedTradeTicker].price : (latestPricesMap[selectedTradeTicker] || 0))}</span>
                   )}
                 </span>
               </div>
-               <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
-                 <span>Total Amount</span>
-                 <span className="text-blue-600">
+               <div className="flex justify-between text-xl font-black border-t-2 border-dashed border-gray-100 pt-4 mt-2">
+                 <span className="text-gray-400 font-bold text-sm self-center uppercase tracking-widest">Total Amount</span>
+                 <span className="text-blue-600 tabular-nums">
                     {(() => {
                        const marketData = latestPricesMap[selectedTradeTicker];
                        const latestPrice = marketData && typeof marketData === 'object' ? marketData.price : marketData;

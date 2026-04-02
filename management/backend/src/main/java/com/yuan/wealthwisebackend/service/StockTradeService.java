@@ -2,6 +2,7 @@ package com.yuan.wealthwisebackend.service;
 
 import com.yuan.wealthwisebackend.model.dto.StockPositionDTO;
 import com.yuan.wealthwisebackend.model.entity.StockTrade;
+import com.yuan.wealthwisebackend.model.entity.StockRealizedSummary;
 import com.baomidou.mybatisplus.extension.service.IService;
 
 import java.math.BigDecimal;
@@ -31,4 +32,19 @@ public interface StockTradeService extends IService<StockTrade> {
      * @return
      */
     StockPositionDTO getPositionWithSuggestion(String ticker, BigDecimal currentPrice);
+
+    /**
+     * 保存交易并更新实盈汇总
+     */
+    boolean saveTrade(StockTrade stockTrade);
+
+    /**
+     * 获取所有标的的累计实盈汇总
+     */
+    List<StockRealizedSummary> getRealizedSummary();
+
+    /**
+     * 根据 ticker 删除实盈汇总记录
+     */
+    boolean deleteRealizedSummary(String ticker);
 }

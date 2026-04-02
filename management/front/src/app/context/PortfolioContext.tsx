@@ -14,12 +14,14 @@ interface PortfolioContextType {
   addHolding: (holding: Omit<Holding, 'id'>, customTs?: string) => void;
   updateHolding: (id: string, holding: Omit<Holding, 'id'>) => void;
   removeHolding: (ticker: string) => Promise<boolean>;
+  removeRealizedProfit: (ticker: string) => Promise<boolean>;
   deleteTrade: (id: number) => Promise<boolean>;
   isLoading: boolean;
   error: string | null;
   refreshData: () => void;
   latestPricesMap: Record<string, any>;
   stockMetadata: Record<string, any>;
+  trades: any[];
 }
 
 const PortfolioContext = createContext<PortfolioContextType | undefined>(undefined);
@@ -36,6 +38,7 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [error, setError] = useState<string | null>(null);
   const [latestPricesMap, setLatestPricesMap] = useState<Record<string, any>>({});
   const [stockMetadata, setStockMetadata] = useState<Record<string, any>>({});
+  const [trades, setTrades] = useState<any[]>([]);
 
   const setRole = (newRole: 'user' | 'admin') => {
     setRoleState(newRole);
@@ -101,6 +104,10 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       const infoRes = await fetch('/api/stockinfo/map');
       const stockInfoMap = infoRes.ok ? await infoRes.json() : {};
 
+      // --- NEW: Fetch Realized Summary from DB ---
+      const realizedRes = await fetch('/api/stocktrade/realized');
+      const realizedHistory = realizedRes.ok ? await realizedRes.json() : [];
+
       // Map DB models to Frontend Holding interface
       const mappedHoldings: Holding[] = dbHoldings.map((h: any) => {
         const rawData = latestPricesMap[h.ticker];
@@ -137,37 +144,31 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       });
 
       setHoldings(mappedHoldings);
+      setTrades(trades);
 
-      // --- NEW: Map Closed Holdings (qty = 0 but have realized pnl) ---
-      const closedHoldings: Holding[] = Object.keys(costBasisMap)
-        .filter(t => Math.abs(costBasisMap[t].realized) > 0.01) // Show any ticker with history of realized pnl
-        .map(t => {
-            const cb = costBasisMap[t];
-            const info = stockInfoMap[t] || {};
-            const rawData = latestPricesMap[t];
-            const cPrice = rawData && typeof rawData === 'object' ? (rawData.price || 100.0) : (typeof rawData === 'number' ? rawData : 100.0);
-            const changePct = rawData && typeof rawData === 'object' ? (rawData.changePercent || 0) : 0;
-            
-            return {
-              id: 'closed-' + t,
-              ticker: t,
-              name: info.name || t + ' Stock',
-              type: 'stock' as const,
-              quantity: 0,
-              currentPrice: cPrice,
-              purchasePrice: cb.totalCost / (cb.qty || 1), // Legacy or average cost before closing
-              realizedPnL: cb.realized,
-              purchaseDate: (() => {
-                  const firstTrade = trades.find((tr: any) => tr.ticker === t);
-                  if (!firstTrade) return '2025-01-01';
-                  return new Date(firstTrade.ts).toISOString().split('T')[0];
-              })(),
-              sector: info.sector || 'Others',
-              marketCap: info.marketCap || 0,
-              changePercent: changePct
-            };
-        })
-        .filter(h => Math.abs(h.realizedPnL) > 0.01); // Only show those with meaningful pnl
+      // --- UPDATED: Map Realized History from DB instead of local calculation ---
+      const closedHoldings: Holding[] = realizedHistory.map((rh: any) => {
+          const t = rh.ticker;
+          const info = stockInfoMap[t] || {};
+          const rawData = latestPricesMap[t];
+          const cPrice = rawData && typeof rawData === 'object' ? (rawData.price || 100.0) : (typeof rawData === 'number' ? rawData : 100.0);
+          const changePct = rawData && typeof rawData === 'object' ? (rawData.changePercent || 0) : 0;
+          
+          return {
+            id: 'realized-' + t,
+            ticker: t,
+            name: info.name || t + ' Stock',
+            type: 'stock' as const,
+            quantity: 0,
+            currentPrice: cPrice,
+            purchasePrice: 0, // Not applicable for realized summary
+            realizedPnL: rh.cumulativePnl,
+            purchaseDate: '2025-01-01', // Dynamic calculation if needed
+            sector: info.sector || 'Others',
+            marketCap: info.marketCap || 0,
+            changePercent: changePct
+          };
+      });
 
       setClosedHoldings(closedHoldings);
       setLatestPricesMap(latestPricesMap);
@@ -328,12 +329,35 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       } else {
         const errorText = await res.text();
         console.error(`[Portfolio] Failed to remove holding: ${res.status}`, errorText);
-        alert(`删除持仓失败 (Ticker: ${ticker})\n服务器状态: ${res.status}\n详情: ${errorText || '无'}`);
+        alert(`Failed to remove holding (Ticker: ${ticker})\nStatus: ${res.status}\nDetails: ${errorText || 'None'}`);
         return false;
       }
     } catch (e: any) {
       console.error('[Portfolio] Error removing holding:', e);
-      alert(`网络错误: 无法删除记录 ${ticker}\n${e.message}`);
+      alert(`Network error: Could not remove record ${ticker}\n${e.message}`);
+      return false;
+    }
+  };
+
+  const removeRealizedProfit = async (ticker: string) => {
+    console.log(`[Portfolio] Attempting to remove realized profit for: ${ticker}`);
+    try {
+      const res = await fetch(`/api/stocktrade/realized/${ticker}`, {
+        method: 'DELETE'
+      });
+      if (res.ok) {
+        console.log(`[Portfolio] Successfully removed realized profit: ${ticker}`);
+        await fetchData();
+        return true;
+      } else {
+        const errorText = await res.text();
+        console.error(`[Portfolio] Failed to remove realized profit: ${res.status}`, errorText);
+        alert(`Failed to remove realized profit (Ticker: ${ticker})\nStatus: ${res.status}\nDetails: ${errorText || 'None'}`);
+        return false;
+      }
+    } catch (e: any) {
+      console.error('[Portfolio] Error removing realized profit:', e);
+      alert(`Network error: Could not remove record ${ticker}\n${e.message}`);
       return false;
     }
   };
@@ -351,12 +375,12 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       } else {
         const errorText = await res.text();
         console.error(`[Portfolio] Failed to delete trade: ${res.status}`, errorText);
-        alert(`删除交易记录失败 (#${id})\n服务器状态: ${res.status}\n详情: ${errorText || '无'}`);
+        alert(`Failed to delete trade record (#${id})\nServer status: ${res.status}\nDetails: ${errorText || 'None'}`);
         return false;
       }
     } catch (e: any) {
       console.error('[Portfolio] Error deleting trade:', e);
-      alert(`网络错误: 无法删除交易记录 ${id}\n${e.message}`);
+      alert(`Network error: Could not delete trade record ${id}\n${e.message}`);
       return false;
     }
   };
@@ -374,12 +398,14 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
         addHolding,
         updateHolding,
         removeHolding,
+        removeRealizedProfit,
         deleteTrade,
         isLoading,
         error,
         refreshData,
         latestPricesMap,
-        stockMetadata
+        stockMetadata,
+        trades
       }}
     >
       {children}

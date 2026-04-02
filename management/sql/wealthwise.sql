@@ -17,11 +17,17 @@ CREATE TABLE `stock_holding`  (
 ) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
--- Records of stock_holding
+-- Table structure for stock_realized_summary
 -- ----------------------------
-INSERT INTO `stock_holding` VALUES (1, 'NVDA', 100, '2026-04-01 12:00:00', '2026-04-01 12:00:00');
-INSERT INTO `stock_holding` VALUES (2, 'AAPL', 50, '2026-04-01 12:00:00', '2026-04-01 12:00:00');
-INSERT INTO `stock_holding` VALUES (3, 'TSLA', 200, '2026-04-01 12:00:00', '2026-04-01 12:00:00');
+DROP TABLE IF EXISTS `stock_realized_summary`;
+CREATE TABLE `stock_realized_summary`  (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `ticker` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '股票代码',
+  `cumulative_pnl` decimal(10, 4) NOT NULL DEFAULT 0.0000 COMMENT '累计已实现盈亏',
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`) USING BTREE,
+  UNIQUE INDEX `uk_ticker`(`ticker` ASC) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci ROW_FORMAT = Dynamic;
 
 -- ----------------------------
 -- Table structure for stock_price

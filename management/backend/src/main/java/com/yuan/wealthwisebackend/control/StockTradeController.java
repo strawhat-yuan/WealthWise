@@ -26,7 +26,7 @@ public class StockTradeController {
      */
     @PostMapping
     public boolean add(@RequestBody StockTrade stockTrade) {
-        return stockTradeService.save(stockTrade);
+        return stockTradeService.saveTrade(stockTrade);
     }
 
     /**
@@ -176,5 +176,15 @@ public class StockTradeController {
     @GetMapping("/positions")
     public List<StockPositionDTO> getAllPositions() {
         return stockTradeService.calculateAllPositions();
+    }
+
+    @GetMapping("/realized")
+    public List<com.yuan.wealthwisebackend.model.entity.StockRealizedSummary> getRealizedSummary() {
+        return stockTradeService.getRealizedSummary();
+    }
+
+    @DeleteMapping("/realized/{ticker}")
+    public boolean deleteRealizedSummary(@PathVariable String ticker) {
+        return stockTradeService.deleteRealizedSummary(ticker);
     }
 }

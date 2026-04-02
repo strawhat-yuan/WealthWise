@@ -75,15 +75,15 @@ export default function Transactions() {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除交易记录？</AlertDialogTitle>
+            <AlertDialogTitle>Confirm Delete Transaction?</AlertDialogTitle>
             <AlertDialogDescription>
-              您确定要删除这笔 <strong>{tradeToDelete?.ticker}</strong> 的交易记录 (#{tradeToDelete?.id}) 吗？此操作不可撤销。
+              Are you sure you want to delete the transaction record for <strong>{tradeToDelete?.ticker}</strong> (#{tradeToDelete?.id})? This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteTrade} className="bg-red-600 hover:bg-red-700">
-              确认删除
+              Confirm Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

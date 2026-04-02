@@ -6,7 +6,11 @@ import com.yuan.wealthwisebackend.model.dto.StockPositionDTO;
 import com.yuan.wealthwisebackend.model.entity.StockTrade;
 import com.yuan.wealthwisebackend.service.StockTradeService;
 import com.yuan.wealthwisebackend.mapper.StockTradeMapper;
+import com.yuan.wealthwisebackend.mapper.StockRealizedSummaryMapper;
+import com.yuan.wealthwisebackend.model.entity.StockRealizedSummary;
+import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -20,6 +24,53 @@ import java.util.*;
 @Service
 public class StockTradeServiceImpl extends ServiceImpl<StockTradeMapper, StockTrade>
     implements StockTradeService{
+
+    @Resource
+    private StockRealizedSummaryMapper realizedSummaryMapper;
+
+    @Override
+    @Transactional
+    public boolean saveTrade(StockTrade trade) {
+        // 1. 如果是卖出，先计算本次卖出的 P&L (基于当前持仓成本)
+        if ("SELL".equalsIgnoreCase(trade.getTradeType())) {
+            StockPositionDTO currentPos = calculatePosition(trade.getTicker());
+            if (currentPos != null && currentPos.getCurrentQuantity() >= trade.getQuantity()) {
+                BigDecimal avgCost = currentPos.getAverageCost();
+                BigDecimal profit = trade.getPrice().subtract(avgCost)
+                        .multiply(new BigDecimal(trade.getQuantity()));
+
+                // 2. 更新或插入累计实盈记录 (标的级别)
+                QueryWrapper<StockRealizedSummary> wrapper = new QueryWrapper<>();
+                wrapper.eq("ticker", trade.getTicker());
+                StockRealizedSummary summary = realizedSummaryMapper.selectOne(wrapper);
+
+                if (summary == null) {
+                    summary = new StockRealizedSummary();
+                    summary.setTicker(trade.getTicker());
+                    summary.setCumulativePnl(profit);
+                    realizedSummaryMapper.insert(summary);
+                } else {
+                    summary.setCumulativePnl(summary.getCumulativePnl().add(profit));
+                    realizedSummaryMapper.updateById(summary);
+                }
+            }
+        }
+
+        // 3. 执行基础保存
+        return save(trade);
+    }
+
+    @Override
+    public List<StockRealizedSummary> getRealizedSummary() {
+        return realizedSummaryMapper.selectList(null);
+    }
+
+    @Override
+    public boolean deleteRealizedSummary(String ticker) {
+        QueryWrapper<StockRealizedSummary> wrapper = new QueryWrapper<>();
+        wrapper.eq("ticker", ticker);
+        return realizedSummaryMapper.delete(wrapper) > 0;
+    }
 
     /**
      * 获取某只股票的平均持仓成本
