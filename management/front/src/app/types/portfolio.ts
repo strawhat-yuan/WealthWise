@@ -9,6 +9,7 @@ export interface Holding {
   purchasePrice: number;
   currentPrice: number;
   realizedPnL: number;
+  totalSoldValue?: number;
   purchaseDate: string;
   sector?: string;
   marketCap?: number;

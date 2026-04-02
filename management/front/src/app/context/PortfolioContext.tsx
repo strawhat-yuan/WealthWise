@@ -67,21 +67,27 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
       trades.sort((a: any, b: any) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
 
       let realizedPnL = 0;
+      const tradesSummaryMap: Record<string, { totalSoldQty: number, totalSoldValue: number }> = {};
       const costBasisMap: Record<string, { qty: number, totalCost: number, realized: number }> = {};
 
       trades.forEach((trade: any) => {
         const t = trade.ticker;
         if (!costBasisMap[t]) costBasisMap[t] = { qty: 0, totalCost: 0, realized: 0 };
+        if (!tradesSummaryMap[t]) tradesSummaryMap[t] = { totalSoldQty: 0, totalSoldValue: 0 };
+        
         const state = costBasisMap[t];
+        const summary = tradesSummaryMap[t];
 
         if (trade.tradeType === 'BUY') {
           state.qty += trade.quantity;
           state.totalCost += trade.amount;
         } else if (trade.tradeType === 'SELL') {
+          summary.totalSoldQty += trade.quantity; // Sum of all shares sold
+          summary.totalSoldValue += trade.amount; // Sum of all sell values (price * quantity)
+          
           if (state.qty > 0) {
             const avgCostPerShare = state.totalCost / state.qty;
             const realizedVal = (trade.price - avgCostPerShare) * trade.quantity;
-            realizedPnL += realizedVal;
             state.realized += realizedVal;
 
             state.qty -= trade.quantity;
@@ -93,7 +99,10 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
           }
         }
       });
-      setTotalRealizedPnL(realizedPnL);
+      
+      // Update total realized P&L to be the sum of all sell values as requested
+      const totalSellValue = Object.values(tradesSummaryMap).reduce((sum, s) => sum + s.totalSoldValue, 0);
+      setTotalRealizedPnL(totalSellValue);
 
       // Fetch latest prices using the dynamic endpoint previously built
       const priceRes = await fetch('/api/stockprice/market/latest');
@@ -118,10 +127,16 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
         const info = stockInfoMap[h.ticker] || {};
         
         let pPrice = cPrice * 0.8;
-        let tRealized = 0;
+        let netGain = 0;
+        let tSoldValue = 0;
+        const summary = tradesSummaryMap[h.ticker];
+        if (summary) {
+            tSoldValue = summary.totalSoldValue;
+        }
+
         const cb = costBasisMap[h.ticker];
         if (cb) {
-            tRealized = cb.realized;
+            netGain = cb.realized;
             if (cb.qty > 0) {
                 pPrice = cb.totalCost / cb.qty; // Accurate historical cost basis!
             }
@@ -135,7 +150,8 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
           quantity: h.quantity,
           currentPrice: cPrice,
           purchasePrice: pPrice,
-          realizedPnL: tRealized,
+          realizedPnL: netGain, // Back to actual Profit/Loss
+          totalSoldValue: tSoldValue, // New field for Total Sell Price
           purchaseDate: h.createdAt ? new Date(h.createdAt).toISOString().split('T')[0] : '2025-01-01',
           sector: info.sector || 'Others',
           marketCap: info.marketCap || 0,
@@ -154,15 +170,19 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
           const cPrice = rawData && typeof rawData === 'object' ? (rawData.price || 100.0) : (typeof rawData === 'number' ? rawData : 100.0);
           const changePct = rawData && typeof rawData === 'object' ? (rawData.changePercent || 0) : 0;
           
+          const summary = tradesSummaryMap[t] || { totalSoldQty: 0, totalSoldValue: 0 };
+          const cb = costBasisMap[t];
+          
           return {
             id: 'realized-' + t,
             ticker: t,
             name: info.name || t + ' Stock',
             type: 'stock' as const,
-            quantity: 0,
+            quantity: summary.totalSoldQty, // Cumulative total SOLD
             currentPrice: cPrice,
             purchasePrice: 0, // Not applicable for realized summary
-            realizedPnL: rh.cumulativePnl,
+            realizedPnL: cb ? cb.realized : 0, // Actual Profit/Loss
+            totalSoldValue: summary.totalSoldValue, // Cumulative total sell value
             purchaseDate: '2025-01-01', // Dynamic calculation if needed
             sector: info.sector || 'Others',
             marketCap: info.marketCap || 0,

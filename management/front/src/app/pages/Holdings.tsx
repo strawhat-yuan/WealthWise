@@ -467,7 +467,7 @@ export default function Holdings() {
                   </TableRow>
                 ) : (
                   sortedHoldings.map((holding) => {
-                    const value = activeTab === 'active' ? calculateHoldingValue(holding) : 0;
+                    const value = activeTab === 'active' ? calculateHoldingValue(holding) : (holding.totalSoldValue || 0);
                     const gainLoss = activeTab === 'active' ? calculateHoldingGainLoss(holding) : (holding.realizedPnL || 0);
                     const gainLossPercent = activeTab === 'active' ? calculateHoldingGainLossPercent(holding) : 0;
 
@@ -512,7 +512,7 @@ export default function Holdings() {
                         <TableCell className="text-right">
                           {(() => {
                             const chg = holding.changePercent || 0;
-                            const dailyPnL = value * (chg / (100 + chg));
+                            const dailyPnL = activeTab === 'active' ? value * (chg / (100 + chg)) : 0;
                             return (
                                <div className={`${dailyPnL >= 0 ? 'text-green-600' : 'text-red-600'} font-medium tabular-nums`}>
                                  <div className="flex items-center justify-end gap-0.5">
@@ -537,7 +537,7 @@ export default function Holdings() {
                                 variant="destructive"
                                 onClick={() => handleOpenTradeDialog(holding.ticker, 'SELL')}
                                 className="h-8 px-4 font-bold"
-                                disabled={holding.quantity <= 0}
+                                disabled={activeTab === 'closed' || holding.quantity <= 0}
                               >
                                 Sell
                               </Button>
