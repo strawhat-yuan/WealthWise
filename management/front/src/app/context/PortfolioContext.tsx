@@ -100,9 +100,9 @@ export const PortfolioProvider: React.FC<{ children: ReactNode }> = ({ children 
         }
       });
       
-      // Update total realized P&L to be the sum of all sell values as requested
-      const totalSellValue = Object.values(tradesSummaryMap).reduce((sum, s) => sum + s.totalSoldValue, 0);
-      setTotalRealizedPnL(totalSellValue);
+      // Update total realized P&L to be the sum of all actual profits (Realized P&L) for closed positions
+      const totalPnL = Object.values(costBasisMap).reduce((sum, cb) => sum + cb.realized, 0);
+      setTotalRealizedPnL(totalPnL);
 
       // Fetch latest prices using the dynamic endpoint previously built
       const priceRes = await fetch('/api/stockprice/market/latest');
